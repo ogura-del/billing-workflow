@@ -89,22 +89,22 @@
   .success-card { background: #fff; border-radius: 16px; padding: 48px 32px; text-align: center; box-shadow: 0 2px 16px rgba(67,56,202,0.08); }
 
   /* List */
-  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-  .summary-card { border-radius: 12px; padding: 14px 16px; text-align: center; cursor: pointer; border: 2px solid transparent; }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .summary-card { border-radius: 10px; padding: 10px 12px; text-align: center; cursor: pointer; border: 2px solid transparent; }
   .summary-card.active { border-color: currentColor; }
-  .summary-num { font-size: 28px; font-weight: 800; }
+  .summary-num { font-size: 22px; font-weight: 800; }
   .summary-lbl { font-size: 12px; font-weight: 600; }
   .filter-bar { display: flex; gap: 7px; margin-bottom: 16px; flex-wrap: wrap; }
   .filter-btn { padding: 5px 16px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #fff; color: #374151; font-size: 13px; }
   .filter-btn.active { background: #4338CA; border-color: #4338CA; color: #fff; font-weight: 700; }
-  .record-list { display: flex; flex-direction: column; gap: 6px; }
-  .record-card { background: #fff; border-radius: 10px; padding: 10px 16px; box-shadow: 0 1px 6px rgba(67,56,202,0.07); border: 1px solid #EDE9FE; cursor: pointer; transition: box-shadow 0.12s; }
+  .record-list { display: flex; flex-direction: column; gap: 4px; }
+  .record-card { background: #fff; border-radius: 8px; padding: 7px 14px; box-shadow: 0 1px 6px rgba(67,56,202,0.07); border: 1px solid #EDE9FE; cursor: pointer; transition: box-shadow 0.12s; }
   .record-card:hover { box-shadow: 0 4px 16px rgba(67,56,202,0.13); }
   .record-card.remand { border-color: #FDE68A; }
-  .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
   .record-no { font-size: 13px; font-weight: 700; color: #1F2937; }
   .record-office { margin-left: 8px; font-size: 11px; color: #9CA3AF; }
-  .record-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12px; color: #374151; font-weight: 500; }
+  .record-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: 12px; color: #374151; font-weight: 500; }
   .record-meta .date { font-size: 12px; color: #9CA3AF; }
   .chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
   .chip-red { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
@@ -442,7 +442,18 @@ async function init() {
 // ══════════════════════════════════════════════════════
 //  TAB
 // ══════════════════════════════════════════════════════
+const SETTINGS_PASSWORD = "just0501";
+let settingsUnlocked = false;
+
 function switchTab(tab) {
+  if (tab === "settings" && !settingsUnlocked) {
+    const pw = prompt("設定画面のパスワードを入力してください");
+    if (pw !== SETTINGS_PASSWORD) {
+      alert("パスワードが違います");
+      return;
+    }
+    settingsUnlocked = true;
+  }
   ["form","list","settings"].forEach(t => {
     document.getElementById("tab-" + t).style.display = t === tab ? "" : "none";
   });
