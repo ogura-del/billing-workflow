@@ -689,7 +689,7 @@ function renderList() {
   }
 
   el.innerHTML = filtered.map(r => `
-    <div class="record-card ${r.status==='差戻し'?'remand':''}" onclick="openDetail('${r.id}')">
+    <div class="record-card ${r.status==='差戻し'?'remand':''}" onclick="openDetail(this.dataset.id)" data-id="${r.id}">
       <div class="record-header">
         <div><span class="record-no">請求先No: ${r.billingNo}</span><span class="record-office">${r.office}</span></div>
         ${statusBadgeHtml(r.status)}
@@ -709,7 +709,7 @@ function renderList() {
 //  DETAIL MODAL
 // ══════════════════════════════════════════════════════
 function openDetail(id) {
-  currentDetail = records.find(r => r.id === id);
+  currentDetail = records.find(r => String(r.id) === String(id));
   if (!currentDetail) return;
   statusEditChoice = currentDetail.status;
 
