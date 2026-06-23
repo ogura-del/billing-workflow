@@ -1,510 +1,817 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>請求データ 修正ワークフロー</title>
-  
-  <!-- 🔑 ① Google Identity Services ライブラリの読み込み -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求データ 修正ワークフロー</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Hiragino Sans', 'Meiryo', sans-serif; background: #F5F3FF; min-height: 100vh; }
+  input, select, textarea, button { font-family: inherit; }
+  button { cursor: pointer; }
 
-  <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Hiragino Sans', 'Meiryo', sans-serif; background: #F5F3FF; min-height: 100vh; }
-    input, select, textarea, button { font-family: inherit; }
-    button { cursor: pointer; }
-    
-    /* 🔑 ログイン画面用のスタイル */
-    #login-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #F5F3FF; font-family: sans-serif; }
-    .login-box { background: #fff; padding: 40px; border-radius: 16px; box-shadow: 0 4px 24px rgba(67,56,202,0.1); text-align: center; max-width: 400px; width: 90%; }
-    .login-title { color: #4338CA; margin: 0 0 10px; font-size: 22px; font-weight: 800; }
-    .login-subtitle { color: #6B7280; font-size: 14px; margin: 0 0 28px; line-height: 1.5; }
-    .login-error { color: #EF4444; margin-top: 18px; font-weight: bold; font-size: 13px; min-height: 20px; background: #FEF2F2; padding: 8px 12px; border-radius: 8px; display: none; }
+  /* ─── ログイン画面 ─── */
+  #login-screen { min-height:100vh; background:#0F0F1A; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .login-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:24px; padding:48px 40px; max-width:420px; width:100%; text-align:center; box-shadow:0 24px 64px rgba(0,0,0,0.4); }
+  .login-icon { width:72px; height:72px; background:linear-gradient(135deg,#4338CA,#6366F1); border-radius:20px; display:flex; align-items:center; justify-content:center; margin:0 auto 24px; font-size:32px; }
+  .login-brand { font-size:11px; color:#6366F1; font-weight:700; letter-spacing:0.15em; margin-bottom:8px; }
+  .login-title { font-size:22px; font-weight:800; color:white; margin-bottom:8px; }
+  .login-desc { font-size:14px; color:rgba(255,255,255,0.4); margin-bottom:36px; line-height:1.6; }
+  .login-error { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:12px 16px; margin-bottom:20px; font-size:13px; color:#FCA5A5; display:none; }
+  .login-btn { width:100%; padding:14px 24px; background:white; border:none; border-radius:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:12px; font-size:15px; font-weight:700; color:#374151; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:transform 0.2s; }
+  .login-btn:hover { transform:translateY(-1px); }
+  .login-note { font-size:11px; color:rgba(255,255,255,0.2); margin-top:20px; }
 
-    /* Header */
-    .header { background: #4338CA; }
-    .header-inner { max-width: 800px; margin: 0 auto; padding: 20px 20px 0; }
-    .header-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .header-title h1 { color: #fff; font-size: 19px; font-weight: 800; margin: 0; }
-    .header-count { margin-left: auto; background: rgba(255,255,255,0.15); color: #C7D2FE; border-radius: 20px; padding: 2px 12px; font-size: 12px; font-weight: 600; }
-    .tabs { display: flex; gap: 2px; }
-    .tab-btn { padding: 9px 20px; background: transparent; color: rgba(255,255,255,0.72); border: none; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 500; }
-    .tab-btn.active { background: #fff; color: #4338CA; font-weight: 700; }
-    /* Main */
-    .main { max-width: 800px; margin: 0 auto; padding: 28px 20px 80px; }
-    /* Card */
-    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(67,56,202,0.08); overflow: hidden; }
-    /* Notice */
-    .notice { background: #FFFBEB; border-bottom: 1px solid #FDE68A; padding: 18px 28px; }
-    .notice-title { font-size: 13px; font-weight: 800; color: #92400E; margin-bottom: 10px; }
-    .notice ol { margin: 0 0 10px; padding-left: 18px; color: #78350F; font-size: 13px; line-height: 2; }
-    .notice-warn { background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; padding: 8px 12px; color: #92400E; font-size: 13px; font-weight: 700; }
-    .notice-sub { margin: 10px 0 0; font-size: 12px; color: #B45309; }
-    /* Form */
-    .form-body { padding: 28px; }
-    .field { margin-bottom: 18px; }
-    .field label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
-    .field label .req { color: #EF4444; margin-left: 3px; }
-    .field input, .field select, .field textarea {width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; transition: border-color 0.15s; }
-    .field input:focus, .field select:focus, .field textarea:focus { border-color: #6366F1; }
-    .field textarea { resize: vertical; }
-    /* Approver checkboxes */
-    .approver-box { margin-bottom: 20px; }
-    .approver-box > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-    .approver-options { display: flex; gap: 12px; flex-wrap: wrap; }
-    .approver-option { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #F9FAFB; border: 1.5px solid #D1D5DB; border-radius: 10px; padding: 9px 16px; transition: all 0.12s; user-select: none; }
-    .approver-option.checked { background: #EEF2FF; border-color: #6366F1; }
-    .approver-option input { accent-color: #6366F1; width: 16px; height: 16px; }
-    .approver-option .name { font-size: 14px; color: #374151; }
-    .approver-option.checked .name { font-weight: 700; color: #4338CA; }
-    /* Multi-check chips */
-    .multi-check { margin-bottom: 18px; }
-    .multi-check > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-    .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-    .chip-toggle { padding: 5px 13px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #F9FAFB; color: #374151; font-size: 13px; }
-    .chip-toggle.on { border-color: #6366F1; background: #EEF2FF; color: #4F46E5; font-weight: 700; }
-    /* Person selector */
-    .person-selector { margin-bottom: 18px; position: relative; }
-    .person-selector > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
-    .selected-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-    .user-tag { display: inline-flex; align-items: center; gap: 5px; background: #EEF2FF; color: #4338CA; border: 1px solid #C7D2FE; border-radius: 20px; padding: 2px 8px 2px 4px; font-size: 13px; font-weight: 500; }
-    .user-tag button { background: none; border: none; color: #A5B4FC; font-size: 15px; padding: 0; line-height: 1; margin-left: 2px; cursor: pointer; }
-    .person-input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; }
-    .person-input:focus { border-color: #6366F1; }
-    .person-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; background: #fff; border: 1.5px solid #E5E7EB; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.10); max-height: 220px; overflow-y: auto; }
-    .person-dropdown.open { display: block; }
-    .person-option { padding: 9px 14px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    .person-option:hover { background: #F5F3FF; }
-    .person-empty { padding: 12px 14px; font-size: 13px; color: #9CA3AF; }
-    /* Avatar */
-    .avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; }
-    /* Submit btn */
-    .submit-btn { width: 100%; padding: 13px; background: #4338CA; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; }
-    .submit-btn:disabled { background: #A5B4FC; cursor: not-allowed; }
-    .error-msg { color: #EF4444; font-size: 13px; margin-bottom: 16px; background: #FEF2F2; border-radius: 8px; padding: 10px 14px; }
-    /* Success */
-    .success-card { background: #fff; border-radius: 16px; padding: 48px 32px; text-align: center; box-shadow: 0 2px 16px rgba(67,56,202,0.08); }
-    /* List */
-    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-    .summary-card { border-radius: 10px; padding: 10px 12px; text-align: center; cursor: pointer; border: 2px solid transparent; }
-    .summary-card.active { border-color: currentColor; }
-    .summary-num { font-size: 22px; font-weight: 800; }
-    .summary-lbl { font-size: 12px; font-weight: 600; }
-    .filter-bar { display: flex; gap: 7px; margin-bottom: 16px; flex-wrap: wrap; }
-    .filter-btn { padding: 5px 16px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #fff; color: #374151; font-size: 13px; }
-    .filter-btn.active { background: #4338CA; border-color: #4338CA; color: #fff; font-weight: 700; }
-    .record-list { display: flex; flex-direction: column; gap: 4px; }
-    .record-card { background: #fff; border-radius: 8px; padding: 7px 14px; box-shadow: 0 1px 6px rgba(67,56,202,0.07); border: 1px solid #EDE9FE; cursor: pointer; transition: box-shadow 0.12s; }
-    .record-card:hover { box-shadow: 0 4px 16px rgba(67,56,202,0.13); }
-    .record-card.remand { border-color: #FDE68A; }
-    .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
-    .record-no { font-size: 13px; font-weight: 700; color: #1F2937; }
-    .record-office { margin-left: 8px; font-size: 11px; color: #9CA3AF; }
-    .record-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: 12px; color: #374151; font-weight: 500; }
-    .record-meta .date { font-size: 12px; color: #9CA3AF; }
-    .chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
-    .chip-red { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
-    .chip-gray { background: #F3F4F6; color: #374151; border: 1px solid #E5E7EB; display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-    .remand-note { margin-top: 8px; font-size: 12px; color: #D97706; background: #FEF9C3; border-radius: 6px; padding: 6px 10px; border: 1px solid #FDE68A; }
-    .empty-state { background: #fff; border-radius: 16px; padding: 48px; text-align: center; color: #9CA3AF; }
-    /* Status badge */
-    .status-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; padding: 3px 11px; font-size: 12px; font-weight: 700; border: 1px solid; }
-    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
-    /* Modal */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
-    .modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
-    .modal-header { padding: 22px 24px; border-bottom: 1px solid #F3F4F6; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #fff; border-radius: 18px 18px 0 0; z-index: 1; }
-    .modal-close { background: none; border: none; font-size: 22px; color: #9CA3AF; }
-    .modal-body { padding: 20px 24px; }
-    .detail-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
-    .detail-label { font-size: 12px; font-weight: 700; color: #9CA3AF; width: 110px; flex-shrink: 0; padding-top: 2px; }
-    .detail-value { font-size: 14px; color: #1F2937; flex: 1; }
-    .history-section { margin-top: 20px; border-top: 1px solid #F3F4F6; padding-top: 16px; }
-    .history-title { font-size: 11px; font-weight: 700; color: #9CA3AF; margin: 0 0 10px; letter-spacing: 1px; text-transform: uppercase; }
-    .history-item { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
-    .history-dot { width: 8px; height: 8px; border-radius: 50%; background: #6366F1; margin-top: 4px; flex-shrink: 0; }
-    .history-text { font-size: 13px; color: #374151; }
-    .history-meta { color: #9CA3AF; margin-left: 8px; }
-    .history-comment { color: #6B7280; margin-top: 2px; font-size: 12px; }
-    .status-change { margin-top: 20px; border-top: 1px solid #F3F4F6; padding-top: 18px; }
-    .status-change-title { font-size: 13px; font-weight: 700; color: #374151; margin: 0 0 10px; }
-    .status-btns { display: flex; gap: 8px; margin-bottom: 12px; }
-    .status-choice { padding: 6px 18px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #F9FAFB; color: #374151; font-size: 13px; }
-    .status-choice.on { border-color: #4338CA; background: #EEF2FF; color: #4338CA; font-weight: 700; }
-    .update-btn { background: #4338CA; color: #fff; border: none; border-radius: 8px; padding: 9px 24px; font-size: 13px; font-weight: 700; }
-    .update-btn:disabled { background: #A5B4FC; cursor: not-allowed; }
-    /* Settings */
-    .settings-section { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(67,56,202,0.08); overflow: hidden; margin-bottom: 20px; }
-    .settings-header { background: linear-gradient(90deg,#EEF2FF,#F5F3FF); padding: 15px 28px; border-bottom: 1px solid #E5E7EB; font-size: 13px; font-weight: 600; color: #6366F1; }
-    .settings-body { padding: 24px 28px; }
-    .settings-hint { font-size: 12px; color: #9CA3AF; margin: -10px 0 20px; line-height: 1.8; }
-    .save-btn { background: #4338CA; color: #fff; border: none; border-radius: 10px; padding: 12px; width: 100%; font-size: 15px; font-weight: 700; }
-    .member-add-row { display: flex; gap: 10px; margin-bottom: 8px; }
-    .member-add-row input { flex: 1; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; }
-    .member-add-btn { background: #4338CA; color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 14px; font-weight: 700; flex-shrink: 0; }
-    .member-tags { display: flex; flex-wrap: wrap; gap: 8px; max-height: 320px; overflow-y: auto; padding: 4px 0; }
-    .member-tag { display: inline-flex; align-items: center; gap: 5px; background: #F5F3FF; color: #4338CA; border: 1px solid #DDD6FE; border-radius: 20px; padding: 4px 10px 4px 8px; font-size: 13px; }
-    .member-tag button { background: none; border: none; color: #C4B5FD; font-size: 14px; padding: 0; line-height: 1; margin-left: 3px; cursor: pointer; }
-    .member-count { font-size: 12px; color: #9CA3AF; margin-top: 10px; }
-    .loading { text-align: center; padding: 40px; color: #6366F1; font-size: 14px; }
-  </style> 
-</head> 
+  /* Header */
+  .header { background: #4338CA; }
+  .header-inner { max-width: 800px; margin: 0 auto; padding: 20px 20px 0; }
+  .header-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .header-title h1 { color: #fff; font-size: 19px; font-weight: 800; margin: 0; }
+  .header-count { margin-left: auto; background: rgba(255,255,255,0.15); color: #C7D2FE; border-radius: 20px; padding: 2px 12px; font-size: 12px; font-weight: 600; }
+  .header-user { display:flex; align-items:center; gap:8px; margin-left:8px; }
+  .header-user img { width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.3); }
+  .header-user-name { font-size:12px; color:rgba(255,255,255,0.8); max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .header-logout { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:600; cursor:pointer; }
+  .header-logout:hover { background:rgba(255,255,255,0.25); }
+  .tabs { display: flex; gap: 2px; }
+  .tab-btn { padding: 9px 20px; background: transparent; color: rgba(255,255,255,0.72); border: none; border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 500; }
+  .tab-btn.active { background: #fff; color: #4338CA; font-weight: 700; }
+
+  /* Main */
+  .main { max-width: 800px; margin: 0 auto; padding: 28px 20px 80px; }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(67,56,202,0.08); overflow: hidden; }
+  .notice { background: #FFFBEB; border-bottom: 1px solid #FDE68A; padding: 18px 28px; }
+  .notice-title { font-size: 13px; font-weight: 800; color: #92400E; margin-bottom: 10px; }
+  .notice ol { margin: 0 0 10px; padding-left: 18px; color: #78350F; font-size: 13px; line-height: 2; }
+  .notice-warn { background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; padding: 8px 12px; color: #92400E; font-size: 13px; font-weight: 700; }
+  .notice-sub { margin: 10px 0 0; font-size: 12px; color: #B45309; }
+  .form-body { padding: 28px; }
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+  .field label .req { color: #EF4444; margin-left: 3px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; transition: border-color 0.15s; }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: #6366F1; }
+  .field textarea { resize: vertical; }
+  .approver-box { margin-bottom: 20px; }
+  .approver-box > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .approver-options { display: flex; gap: 12px; flex-wrap: wrap; }
+  .approver-option { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; background: #F9FAFB; border: 1.5px solid #D1D5DB; border-radius: 10px; padding: 9px 16px; transition: all 0.12s; user-select: none; }
+  .approver-option.checked { background: #EEF2FF; border-color: #6366F1; }
+  .approver-option input { accent-color: #6366F1; width: 16px; height: 16px; }
+  .approver-option .name { font-size: 14px; color: #374151; }
+  .approver-option.checked .name { font-weight: 700; color: #4338CA; }
+  .multi-check { margin-bottom: 18px; }
+  .multi-check > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip-toggle { padding: 5px 13px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #F9FAFB; color: #374151; font-size: 13px; }
+  .chip-toggle.on { border-color: #6366F1; background: #EEF2FF; color: #4F46E5; font-weight: 700; }
+  .person-selector { margin-bottom: 18px; position: relative; }
+  .person-selector > label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+  .selected-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .user-tag { display: inline-flex; align-items: center; gap: 5px; background: #EEF2FF; color: #4338CA; border: 1px solid #C7D2FE; border-radius: 20px; padding: 2px 8px 2px 4px; font-size: 13px; font-weight: 500; }
+  .user-tag button { background: none; border: none; color: #A5B4FC; font-size: 15px; padding: 0; line-height: 1; margin-left: 2px; cursor: pointer; }
+  .person-input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; }
+  .person-input:focus { border-color: #6366F1; }
+  .person-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; background: #fff; border: 1.5px solid #E5E7EB; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.10); max-height: 220px; overflow-y: auto; }
+  .person-dropdown.open { display: block; }
+  .person-option { padding: 9px 14px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .person-option:hover { background: #F5F3FF; }
+  .person-empty { padding: 12px 14px; font-size: 13px; color: #9CA3AF; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; }
+  .submit-btn { width: 100%; padding: 13px; background: #4338CA; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; }
+  .submit-btn:disabled { background: #A5B4FC; cursor: not-allowed; }
+  .error-msg { color: #EF4444; font-size: 13px; margin-bottom: 16px; background: #FEF2F2; border-radius: 8px; padding: 10px 14px; }
+  .success-card { background: #fff; border-radius: 16px; padding: 48px 32px; text-align: center; box-shadow: 0 2px 16px rgba(67,56,202,0.08); }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .summary-card { border-radius: 10px; padding: 10px 12px; text-align: center; cursor: pointer; border: 2px solid transparent; }
+  .summary-card.active { border-color: currentColor; }
+  .summary-num { font-size: 22px; font-weight: 800; }
+  .summary-lbl { font-size: 12px; font-weight: 600; }
+  .filter-bar { display: flex; gap: 7px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-btn { padding: 5px 16px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #fff; color: #374151; font-size: 13px; }
+  .filter-btn.active { background: #4338CA; border-color: #4338CA; color: #fff; font-weight: 700; }
+  .record-list { display: flex; flex-direction: column; gap: 4px; }
+  .record-card { background: #fff; border-radius: 8px; padding: 7px 14px; box-shadow: 0 1px 6px rgba(67,56,202,0.07); border: 1px solid #EDE9FE; cursor: pointer; transition: box-shadow 0.12s; }
+  .record-card:hover { box-shadow: 0 4px 16px rgba(67,56,202,0.13); }
+  .record-card.remand { border-color: #FDE68A; }
+  .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+  .record-no { font-size: 13px; font-weight: 700; color: #1F2937; }
+  .record-office { margin-left: 8px; font-size: 11px; color: #9CA3AF; }
+  .record-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: 12px; color: #374151; font-weight: 500; }
+  .record-meta .date { font-size: 12px; color: #9CA3AF; }
+  .chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip-red { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
+  .chip-gray { background: #F3F4F6; color: #374151; border: 1px solid #E5E7EB; display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .remand-note { margin-top: 8px; font-size: 12px; color: #D97706; background: #FEF9C3; border-radius: 6px; padding: 6px 10px; border: 1px solid #FDE68A; }
+  .empty-state { background: #fff; border-radius: 16px; padding: 48px; text-align: center; color: #9CA3AF; }
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; padding: 3px 11px; font-size: 12px; font-weight: 700; border: 1px solid; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+  .modal-header { padding: 22px 24px; border-bottom: 1px solid #F3F4F6; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #fff; border-radius: 18px 18px 0 0; z-index: 1; }
+  .modal-close { background: none; border: none; font-size: 22px; color: #9CA3AF; }
+  .modal-body { padding: 20px 24px; }
+  .detail-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+  .detail-label { font-size: 12px; font-weight: 700; color: #9CA3AF; width: 110px; flex-shrink: 0; padding-top: 2px; }
+  .detail-value { font-size: 14px; color: #1F2937; flex: 1; }
+  .history-section { margin-top: 20px; border-top: 1px solid #F3F4F6; padding-top: 16px; }
+  .history-title { font-size: 11px; font-weight: 700; color: #9CA3AF; margin: 0 0 10px; letter-spacing: 1px; text-transform: uppercase; }
+  .history-item { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+  .history-dot { width: 8px; height: 8px; border-radius: 50%; background: #6366F1; margin-top: 4px; flex-shrink: 0; }
+  .history-text { font-size: 13px; color: #374151; }
+  .history-meta { color: #9CA3AF; margin-left: 8px; }
+  .history-comment { color: #6B7280; margin-top: 2px; font-size: 12px; }
+  .status-change { margin-top: 20px; border-top: 1px solid #F3F4F6; padding-top: 18px; }
+  .status-change-title { font-size: 13px; font-weight: 700; color: #374151; margin: 0 0 10px; }
+  .status-btns { display: flex; gap: 8px; margin-bottom: 12px; }
+  .status-choice { padding: 6px 18px; border-radius: 20px; border: 1.5px solid #D1D5DB; background: #F9FAFB; color: #374151; font-size: 13px; }
+  .status-choice.on { border-color: #4338CA; background: #EEF2FF; color: #4338CA; font-weight: 700; }
+  .update-btn { background: #4338CA; color: #fff; border: none; border-radius: 8px; padding: 9px 24px; font-size: 13px; font-weight: 700; }
+  .update-btn:disabled { background: #A5B4FC; cursor: not-allowed; }
+  .settings-section { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(67,56,202,0.08); overflow: hidden; margin-bottom: 20px; }
+  .settings-header { background: linear-gradient(90deg,#EEF2FF,#F5F3FF); padding: 15px 28px; border-bottom: 1px solid #E5E7EB; font-size: 13px; font-weight: 600; color: #6366F1; }
+  .settings-body { padding: 24px 28px; }
+  .settings-hint { font-size: 12px; color: #9CA3AF; margin: -10px 0 20px; line-height: 1.8; }
+  .save-btn { background: #4338CA; color: #fff; border: none; border-radius: 10px; padding: 12px; width: 100%; font-size: 15px; font-weight: 700; }
+  .member-add-row { display: flex; gap: 10px; margin-bottom: 8px; }
+  .member-add-row input { flex: 1; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #D1D5DB; font-size: 14px; outline: none; background: #F9FAFB; }
+  .member-add-btn { background: #4338CA; color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .member-tags { display: flex; flex-wrap: wrap; gap: 8px; max-height: 320px; overflow-y: auto; padding: 4px 0; }
+  .member-tag { display: inline-flex; align-items: center; gap: 5px; background: #F5F3FF; color: #4338CA; border: 1px solid #DDD6FE; border-radius: 20px; padding: 4px 10px 4px 8px; font-size: 13px; }
+  .member-tag button { background: none; border: none; color: #C4B5FD; font-size: 14px; padding: 0; line-height: 1; margin-left: 3px; cursor: pointer; }
+  .member-count { font-size: 12px; color: #9CA3AF; margin-top: 10px; }
+</style>
+</head>
 <body>
 
-  <!-- 🔑 ② Googleログインプロンプト画面 (初期表示) -->
-  <div id="login-container">
-    <div class="login-box">
-      <h2 class="login-title">社内専用ワークフロー</h2>
-      <p class="login-subtitle">アクセスするには会社のGoogleアカウントで<br>ログインしてください。</p>
-      <div style="display:flex; justify-content:center;" id="buttonDiv"></div>
-      <div id="error-message" class="login-error"></div>
+<!-- ========== ログイン画面 ========== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">✏️</div>
+    <div class="login-brand">JUST FINE Inc.</div>
+    <h1 class="login-title">請求データ<br>修正ワークフロー</h1>
+    <p class="login-desc">会社のGoogleアカウントでログインしてください。</p>
+    <div class="login-error" id="login-error"></div>
+    <button class="login-btn" id="login-btn" onclick="handleLogin()">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 17.1 19.2 14 24 14c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.7 7.4 6.3 14.7z"/><path fill="#FBBC05" d="M24 46c5.5 0 10.5-1.9 14.3-5l-6.6-5.4C29.8 37.4 27 38.5 24 38.5c-5.7 0-10.6-3.6-12.4-8.7l-7 5.4C8.3 41.8 15.6 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.7l6.6 5.4C41.8 36.4 45 30.7 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
+      Googleアカウントでログイン
+    </button>
+    <p class="login-note" id="login-note">@justfine.co.jp のアカウントのみ利用可能</p>
+  </div>
+</div>
+
+<!-- ========== アプリ本体 ========== -->
+<div id="app-screen" style="display:none">
+
+<div class="header">
+  <div class="header-inner">
+    <div class="header-title">
+      <span style="font-size:22px">✏️</span>
+      <h1>請求データ 修正ワークフロー</h1>
+      <span class="header-count" id="totalCount">0件</span>
+      <div class="header-user">
+        <img id="user-avatar" src="" alt="" style="display:none" referrerpolicy="no-referrer">
+        <span class="header-user-name" id="user-name"></span>
+        <button class="header-logout" onclick="handleLogout()">ログアウト</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('form')">申請する</button>
+      <button class="tab-btn" onclick="switchTab('list')">申請一覧</button>
+      <button class="tab-btn" onclick="switchTab('settings')">⚙ 設定</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div id="tab-form">
+    <div id="success-view" style="display:none" class="success-card">
+      <div style="font-size:52px;margin-bottom:12px">✅</div>
+      <h2 style="color:#059669;font-size:20px;margin:0 0 8px">申請が完了しました</h2>
+      <p id="success-msg" style="color:#6B7280;margin:0 0 24px"></p>
+      <button class="submit-btn" style="width:auto;padding:11px 32px;font-size:14px" onclick="resetForm()">新しい申請をする</button>
+    </div>
+    <div id="form-view" class="card">
+      <div class="notice">
+        <div class="notice-title">📋 運用ルール</div>
+        <p class="notice-sub">請求書発行後に修正や取消が発生した際は下記申請を行います。</p>
+        <ol>
+          <li>承認者は『小倉・事業部長(staffingのみ)』を選択</li>
+          <li>閲覧者は『上長・統括部長』を選択</li>
+          <li>入力が完了したら承認者へ通知が行き申請完了です。</li>
+          <li>承認者の方で内容確認・SEの作業完了後、承認済みステータスに変更をします。</li>
+        </ol>
+        <div class="notice-warn">※※ 発生要因・発生経緯の詳細を報告してください。詳細の記載がないものは差し戻します。※※</div>
+      </div>
+      <div class="form-body">
+        <div class="approver-box">
+          <label>承認者 <span class="req">*</span></label>
+          <div class="approver-options" id="approver-options"></div>
+        </div>
+        <div class="field">
+          <label>該当請求先No <span class="req">*</span></label>
+          <input type="text" id="f-billingNo" placeholder="例: 12345">
+        </div>
+        <div class="field">
+          <label>所属オフィス <span class="req">*</span></label>
+          <select id="f-office"><option value="">選択してください</option></select>
+        </div>
+        <div class="person-selector" id="ps-applicant">
+          <label>申請者 <span class="req">*</span></label>
+          <div class="selected-tags" id="ps-applicant-tags"></div>
+          <div style="position:relative">
+            <input class="person-input" id="ps-applicant-input" placeholder="名前の一部を入力して検索..." autocomplete="off">
+            <div class="person-dropdown" id="ps-applicant-dropdown"></div>
+          </div>
+        </div>
+        <div class="multi-check">
+          <label>修正内容 <span class="req">*</span></label>
+          <div class="chip-row" id="mc-correction"></div>
+        </div>
+        <div class="multi-check">
+          <label>発生要因 <span class="req">*</span></label>
+          <div class="chip-row" id="mc-causes"></div>
+        </div>
+        <div class="field">
+          <label>発生原因 <span class="req">*</span></label>
+          <textarea id="f-causeDetail" rows="3" placeholder="今回の発生原因を記入してください..."></textarea>
+        </div>
+        <div class="field">
+          <label>今後の対策 <span class="req">*</span></label>
+          <textarea id="f-futureAction" rows="3" placeholder="再発防止・今後の対策を記入してください..."></textarea>
+        </div>
+        <div class="person-selector" id="ps-viewers">
+          <label>閲覧者（支店長・統括） <span class="req">*</span></label>
+          <div class="selected-tags" id="ps-viewers-tags"></div>
+          <div style="position:relative">
+            <input class="person-input" id="ps-viewers-input" placeholder="名前の一部を入力して検索..." autocomplete="off">
+            <div class="person-dropdown" id="ps-viewers-dropdown"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>コメント</label>
+          <textarea id="f-comment" rows="3" placeholder="補足コメントがあれば入力..."></textarea>
+        </div>
+        <div id="form-error" class="error-msg" style="display:none"></div>
+        <button class="submit-btn" id="submit-btn" onclick="submitForm()">📨 申請する</button>
+      </div>
     </div>
   </div>
 
-  <!-- 📝 ③ メインコンテンツのコンテナ (初期は非表示) -->
-  <div id="app-content" style="display: none;">
-    <!-- ========== HEADER ========== --> 
-    <div class="header"> 
-      <div class="header-inner"> 
-        <div class="header-title"> 
-          <span style="font-size:22px">✏️</span> 
-          <h1>請求データ 修正ワークフロー</h1> 
-          <span class="header-count" id="totalCount">0件</span> 
-        </div> 
-        <div class="tabs"> 
-          <button class="tab-btn active" onclick="switchTab('form')">申請する</button> 
-          <button class="tab-btn" onclick="switchTab('list')">申請一覧</button> 
-          <button class="tab-btn" onclick="switchTab('settings')">⚙ 設定</button> 
-        </div> 
-      </div> 
-    </div> 
-    
-    <!-- ========== MAIN ========== --> 
-    <div class="main"> 
-      <!-- FORM TAB --> 
-      <div id="tab-form"> 
-        <!-- 申請完了画面 --> 
-        <div id="success-view" style="display:none" class="success-card"> 
-          <div style="font-size:52px;margin-bottom:12px">✅</div> 
-          <h2 style="color:#059669;font-size:20px;margin:0 0 8px">申請が完了しました</h2> 
-          <p id="success-msg" style="color:#6B7280;margin:0 0 24px"></p> 
-          <button class="submit-btn" style="width:auto;padding:11px 32px;font-size:14px" onclick="resetForm()">新しい申請をする</button> 
-        </div> 
-        <!-- フォーム本体 --> 
-        <div id="form-view" class="card"> 
-          <!-- 運用ルール --> 
-          <div class="notice"> 
-            <div class="notice-title">📋 運用ルール</div> 
-            <p class="notice-sub">請求書発行後に修正や取消が発生した際は下記申請を行います。</p> 
-            <ol> 
-              <li>承認者は『小倉・事業部長(staffingのみ)』を選択</li> 
-              <li>閲覧者は『上長・統括部長』を選択</li> 
-              <li>入力が完了したら承認者へ通知が行き申請完了です。</li> 
-              <li>承認者の方で内容確認・SEের作業完了後、承認済みステータスに変更をします。</li> 
-            </ol> 
-            <div class="notice-warn">※※ 発生要因・発生経緯の詳細を報告してください。詳細の記載がないものは差し戻します。※※</div> 
-          </div> 
-          <div class="form-body"> 
-            <!-- 承認者 --> 
-            <div class="approver-box"> 
-              <label>承認者 <span class="req">*</span></label> 
-              <div class="approver-options" id="approver-options"></div> 
-            </div> 
-            <!-- 請求先No --> 
-            <div class="field"> 
-              <label>該当請求先No <span class="req">*</span></label> 
-              <input type="text" id="f-billingNo" placeholder="例: 12345"> 
-            </div> 
-            <!-- オフィス --> 
-            <div class="field"> 
-              <label>所属オフィス <span class="req">*</span></label> 
-              <select id="f-office"> 
-                <option value="">選択してください</option> 
-              </select> 
-            </div> 
-            <!-- 申請者 --> 
-            <div class="person-selector" id="ps-applicant"> 
-              <label>申請者 <span class="req">*</span></label> 
-              <div class="selected-tags" id="ps-applicant-tags"></div> 
-              <div style="position:relative"> 
-                <input class="person-input" id="ps-applicant-input" placeholder="名前の一部を入力して検索..." autocomplete="off"> 
-                <div class="person-dropdown" id="ps-applicant-dropdown"></div> 
-              </div> 
-            </div> 
-            <!-- 修正内容 --> 
-            <div class="multi-check"> 
-              <label>修正内容 <span class="req">*</span></label> 
-              <div class="chip-row" id="mc-correction"></div> 
-            </div> 
-            <!-- 発生要因 --> 
-            <div class="multi-check"> 
-              <label>発生要因 <span class="req">*</span></label> 
-              <div class="chip-row" id="mc-causes"></div> 
-            </div> 
-            <!-- 発生原因 --> 
-            <div class="field"> 
-              <label>発生原因 <span class="req">*</span></label> 
-              <textarea id="f-causeDetail" rows="3" placeholder="今回の発生原因を記入してください..."></textarea> 
-            </div> 
-            <!-- 今後の対策 --> 
-            <div class="field"> 
-              <label>今後の対策 <span class="req">*</span></label> 
-              <textarea id="f-futureAction" rows="3" placeholder="再発防止・今後の対策を記入してください..."></textarea> 
-            </div> 
-            <!-- 閲覧者 --> 
-            <div class="person-selector" id="ps-viewers"> 
-              <label>閲覧者（支店長・統括） <span class="req">*</span></label> 
-              <div class="selected-tags" id="ps-viewers-tags"></div> 
-              <div style="position:relative"> 
-                <input class="person-input" id="ps-viewers-input" placeholder="名前の一部を入力して検索..." autocomplete="off"> 
-                <div class="person-dropdown" id="ps-viewers-dropdown"></div> 
-              </div> 
-            </div> 
-            <!-- コメント --> 
-            <div class="field"> 
-              <label>コメント</label> 
-              <textarea id="f-comment" rows="3" placeholder="補足コメントがあれば入力..."></textarea> 
-            </div> 
-            <div id="form-error" class="error-msg" style="display:none"></div> 
-            <button class="submit-btn" id="submit-btn" onclick="submitForm()">📨 申請する</button> 
-          </div> 
-        </div> 
-      </div> 
-      
-      <!-- LIST TAB --> 
-      <div id="tab-list" style="display:none"> 
-        <div class="summary-grid"> 
-          <div class="summary-card" style="background:#EFF6FF;color:#3B82F6" id="sum-pending" onclick="setFilter('申請中')"> 
-            <div class="summary-num" id="cnt-pending">0</div> 
-            <div class="summary-lbl">申請中</div> 
-          </div> 
-          <div class="summary-card" style="background:#FEF3C7;color:#D97706" id="sum-remand" onclick="setFilter('差戻し')"> 
-            <div class="summary-num" id="cnt-remand">0</div> 
-            <div class="summary-lbl">差戻し</div> 
-          </div> 
-          <div class="summary-card" style="background:#ECFDF5;color:#059669" id="sum-approved" onclick="setFilter('承認済み')"> 
-            <div class="summary-num" id="cnt-approved">0</div> 
-            <div class="summary-lbl">承認済み</div> 
-          </div> 
-        </div> 
-        <div class="filter-bar"> 
-          <button class="filter-btn active" onclick="setFilter('すべて')" id="fb-all">すべて</button> 
-          <button class="filter-btn" onclick="setFilter('申請中')" id="fb-pending">申請中</button> 
-          <button class="filter-btn" onclick="setFilter('差戻し')" id="fb-remand">差戻し</button> 
-          <button class="filter-btn" onclick="setFilter('承認済み')" id="fb-approved">承認済み</button> 
-        </div> 
-        <div id="record-list"></div> 
-      </div> 
-      
-      <!-- SETTINGS TAB --> 
-      <div id="tab-settings" style="display:none"> 
-        <div class="settings-section"> 
-          <div class="settings-header">Google Chat 通知設定</div> 
-          <div class="settings-body"> 
-            <div class="field"> 
-              <label>Webhook URL</label> 
-              <input type="text" id="s-webhook" placeholder="https://chat.googleapis.com/v1/spaces/..."> 
-            </div> 
-            <p class="settings-hint"> 
-              取得方法: Google Chat のスペース → 管理 → アプリと統合 → <strong>Webhookを追加</strong><br> 設定後は申請のたびに承認者スペースへ自動通知されます。 
-            </p> 
-          </div> 
-        </div> 
-        <div class="settings-section"> 
-          <div class="settings-header">メンバー管理（申請者・閲覧者の選択肢）</div> 
-          <div class="settings-body"> 
-            <div class="member-add-row"> 
-              <input type="text" id="new-member-input" placeholder="新しいメンバー名を入力..." onkeydown="if(event.key==='Enter')addMember()"> 
-              <button class="member-add-btn" onclick="addMember()">追加</button> 
-            </div> 
-            <p style="font-size:12px;color:#9CA3AF;margin:-4px 0 16px">メンバーが増えたらここで追加できます。Enterキーでも追加可。</p> 
-            <div class="member-tags" id="member-tags"></div> 
-            <p class="member-count" id="member-count"></p> 
-          </div> 
-        </div> 
-        <button class="save-btn" onclick="saveSettings()">設定を保存する</button> 
-      </div> 
-    </div> 
-
-    <!-- ========== DETAIL MODAL ========== --> 
-    <div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)"> 
-      <div class="modal-box" id="modal-box"> 
-        <div class="modal-header"> 
-          <div style="display:flex;align-items:center;gap:10px"> 
-            <span id="modal-title" style="font-size:16px;font-weight:800;color:#1F2937"></span> 
-            <span id="modal-status"></span> 
-          </div> 
-          <button class="modal-close" onclick="document.getElementById('modal').style.display='none'">×</button> 
-        </div> 
-        <div class="modal-body" id="modal-body"></div> 
-      </div> 
+  <div id="tab-list" style="display:none">
+    <div class="summary-grid">
+      <div class="summary-card" style="background:#EFF6FF;color:#3B82F6" id="sum-pending" onclick="setFilter('申請中')"><div class="summary-num" id="cnt-pending">0</div><div class="summary-lbl">申請中</div></div>
+      <div class="summary-card" style="background:#FEF3C7;color:#D97706" id="sum-remand" onclick="setFilter('差戻し')"><div class="summary-num" id="cnt-remand">0</div><div class="summary-lbl">差戻し</div></div>
+      <div class="summary-card" style="background:#ECFDF5;color:#059669" id="sum-approved" onclick="setFilter('承認済み')"><div class="summary-num" id="cnt-approved">0</div><div class="summary-lbl">承認済み</div></div>
     </div>
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="setFilter('すべて')" id="fb-all">すべて</button>
+      <button class="filter-btn" onclick="setFilter('申請中')" id="fb-pending">申請中</button>
+      <button class="filter-btn" onclick="setFilter('差戻し')" id="fb-remand">差戻し</button>
+      <button class="filter-btn" onclick="setFilter('承認済み')" id="fb-approved">承認済み</button>
+    </div>
+    <div id="record-list"></div>
   </div>
 
-  <script>
-    // ══════════════════════════════════════════════════════ 
-    //  CONFIG
-    // ══════════════════════════════════════════════════════ 
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzXSc5Q35apoyjY2YC2bV-ys23ZdSnaCyaF2u9qLKWeWnD7CF4GkvtLeLyriBmE0TF_/exec"; 
-    
-    // 🔑 Google 認証用設定項目
-    const CLIENT_ID = "1024203297916-dd93gd8taib3t6jrau20ctm5jie4em1a.apps.googleusercontent.com";
-    const ALLOWED_DOMAIN = "justfine.co.jp"; // 💡 許可したいドメインに書き換えてください（例: test.com など）
+  <div id="tab-settings" style="display:none">
+    <div class="settings-section">
+      <div class="settings-header">Google Chat 通知設定</div>
+      <div class="settings-body">
+        <div class="field">
+          <label>Webhook URL</label>
+          <input type="text" id="s-webhook" placeholder="https://chat.googleapis.com/v1/spaces/...">
+        </div>
+        <p class="settings-hint">取得方法: Google Chat のスペース → 管理 → アプリと統合 → <strong>Webhookを追加</strong><br>設定後は申請のたびに承認者スペースへ自動通知されます。</p>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-header">メンバー管理（申請者・閲覧者の選択肢）</div>
+      <div class="settings-body">
+        <div class="member-add-row">
+          <input type="text" id="new-member-input" placeholder="新しいメンバー名を入力..." onkeydown="if(event.key==='Enter')addMember()">
+          <button class="member-add-btn" onclick="addMember()">追加</button>
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;margin:-4px 0 16px">メンバーが増えたらここで追加できます。Enterキーでも追加可。</p>
+        <div class="member-tags" id="member-tags"></div>
+        <p class="member-count" id="member-count"></p>
+      </div>
+    </div>
+    <button class="save-btn" onclick="saveSettings()">設定を保存する</button>
+  </div>
+</div>
 
-    // ══════════════════════════════════════════════════════ 
-    //  MASTER DATA 
-    // ══════════════════════════════════════════════════════ 
-    const OFFICES = ["川崎オフィス","札幌オフィス","札幌大通オフィス","仙台オフィス","新宿オフィス", "池袋オフィス","横浜オフィス","梅田オフィス","天神オフィス","博多オフィス", "熊本オフィス","沖縄オフィス","チア仙台","チア城東","チア城西","チア長野", "チア梅田","チア福岡","チア熊本","BPO","AG" ]; 
-    const CORRECTION_TYPES = ["紹介料の修正","イレギュラー費入力漏れ","勤務時間相違","時給相違","交通費漏れ", "丸め時間相違","少数点による端数調整","請求先№紐づけ相違","前月調整金漏れ", "宛名相違","締日・支払サイト相違" ]; 
-    const CAUSES = ["当社起因","先方起因"]; 
-    const DEFAULT_APPROVERS = ["小倉菜愛","宮川直人"]; 
-    const AVATAR_COLORS = ["#6366F1","#8B5CF6","#EC4899","#0EA5E9","#10B981","#F59E0B"]; 
-    const STATUS_META = {"申請中":  { bg:"#EFF6FF", text:"#2563EB", border:"#BFDBFE", dot:"#3B82F6" }, "差戻し":  { bg:"#FEF3C7", text:"#D97706", border:"#FDE68A", dot:"#F59E0B" }, "承認済み":{ bg:"#ECFDF5", text:"#059669", border:"#A7F3D0", dot:"#10B981" }, }; 
-    
-    // ══════════════════════════════════════════════════════ 
-    //  STATE 
-    // ══════════════════════════════════════════════════════ 
-    let records  = []; 
-    let members  = []; 
-    let settings = { webhookUrl:"" }; 
-    let currentFilter = "すべて"; 
-    let formState = {approvers: [...DEFAULT_APPROVERS], correctionTypes: [], causes: [], applicant: "", viewers: [], }; 
-    let currentDetail = null; 
-    let statusEditChoice = ""; 
+<div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal-box" id="modal-box">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="modal-title" style="font-size:16px;font-weight:800;color:#1F2937"></span>
+        <span id="modal-status"></span>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('modal').style.display='none'">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
 
-    // ══════════════════════════════════════════════════════ 
-    //  GAS API 
-    // ══════════════════════════════════════════════════════ 
-    async function gasCall(action, body={}) {const url = GAS_URL + "?action=" + action; const res = await fetch(url, {method: "POST", body: JSON.stringify({ action, ...body }), }); return res.json(); } 
+</div><!-- /app-screen -->
 
-    // ══════════════════════════════════════════════════════ 
-    //  🔑 GOOGLE SECURITY & INITIALIZATION 
-    // ══════════════════════════════════════════════════════ 
-    
-    // IDトークンをデコードする関数
-    function parseJwt(token) {
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  認証設定
+// ══════════════════════════════════════════════════════
+const GOOGLE_CLIENT_ID = "1024203297916-dd93gd8taib3t6jrau20ctm5jie4em1a.apps.googleusercontent.com";
+const ALLOWED_DOMAIN   = "justfine.co.jp";
+
+let currentUser = null;
+
+function checkSession() {
+  try {
+    const saved = sessionStorage.getItem("jf_billing_user");
+    if (saved) { currentUser = JSON.parse(saved); showApp(); return true; }
+  } catch(e) {}
+  return false;
+}
+
+function handleLogin() {
+  const errEl = document.getElementById("login-error");
+  errEl.style.display = "none";
+  if (!window.google) {
+    errEl.textContent = "Googleライブラリ読込中です。少し待ってから再度お試しください。";
+    errEl.style.display = "";
+    return;
+  }
+  google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: "openid email profile",
+    callback: async (response) => {
+      if (response.error) {
+        errEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+        errEl.style.display = "";
+        return;
+      }
       try {
-        var base64Url = token.split('.')[1];
-        var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-        return JSON.parse(jsonPayload);
-      } catch (e) { return null; }
-    }
-
-    // Googleログイン完了時のコールバック関数
-    function handleCredentialResponse(response) {
-      const responsePayload = parseJwt(response.credential);
-      const errorEl = document.getElementById('error-message');
-      
-      if (responsePayload) {
-        const email = responsePayload.email;
-        const hd = responsePayload.hd;
-
-        // ドメインチェック
-        if (hd === ALLOWED_DOMAIN || email.endsWith('@' + ALLOWED_DOMAIN)) {
-          // 認証成功：ログイン画面を隠し、アプリ本体を表示
-          document.getElementById('login-container').style.display = 'none';
-          document.getElementById('app-content').style.display = 'block';
-          errorEl.style.display = 'none';
-          
-          // 認証が通ってから本来のアプリ初期化(GAS連携等)を走らせる
-          init();
-        } else {
-          // 認証失敗
-          errorEl.textContent = `アクセス権限がありません。@${ALLOWED_DOMAIN} のアカウントでログインしてください。`;
-          errorEl.style.display = 'block';
-          google.accounts.id.disableAutoSelect();
+        const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: "Bearer " + response.access_token }
+        });
+        const user = await res.json();
+        const domain = (user.email || "").split("@")[1];
+        if (domain !== ALLOWED_DOMAIN) {
+          errEl.textContent = "このアカウント（" + user.email + "）は利用できません。@" + ALLOWED_DOMAIN + " のアカウントでログインしてください。";
+          errEl.style.display = "";
+          return;
         }
+        currentUser = { name: user.name, email: user.email, picture: user.picture };
+        sessionStorage.setItem("jf_billing_user", JSON.stringify(currentUser));
+        showApp();
+      } catch(e) {
+        errEl.textContent = "ユーザー情報の取得に失敗しました。";
+        errEl.style.display = "";
       }
     }
+  }).requestAccessToken();
+}
 
-    // ページ読み込み時に一番最初に走る処理
-    window.onload = function() {
-      // Google 認証の初期化
-      google.accounts.id.initialize({
-        client_id: CLIENT_ID,
-        callback: handleCredentialResponse
-      });
-      
-      // ログインボタンの配置
-      google.accounts.id.renderButton(
-        document.getElementById("buttonDiv"),
-        { theme: "outline", size: "large", text: "signin_with" }
-      );
-      
-      // ワンタップのプロンプト表示
-      google.accounts.id.prompt();
-    };
+function handleLogout() {
+  sessionStorage.removeItem("jf_billing_user");
+  currentUser = null;
+  document.getElementById("app-screen").style.display = "none";
+  document.getElementById("login-screen").style.display = "flex";
+}
 
-    // 本来のワークフローアプリ初期化処理 (認証成功後にコールされます)
-    async function init() {
-      if (!GAS_URL || GAS_URL.includes("【")) {
-        alert("⚠ index.html の GAS_URL を設定してください。\nsetup手順を確認してください。"); 
-      } 
-      buildOfficeSelect(); 
-      buildApproverOptions(); 
-      buildMultiCheck("mc-correction", CORRECTION_TYPES, "correctionTypes"); 
-      buildMultiCheck("mc-causes", CAUSES, "causes"); 
-      setupPersonSelector("applicant", true); 
-      setupPersonSelector("viewers", false); 
-      
-      // Load from GAS 
-      const [rRes, mRes, sRes] = await Promise.all([
-        gasCall("getRecords"), 
-        gasCall("getMembers"), 
-        gasCall("getSettings"), 
-      ]); 
-      records  = rRes.records  || []; 
-      members  = mRes.members  || []; 
-      settings.webhookUrl = (sRes.settings && sRes.settings.webhookUrl) || ""; 
-      renderList(); 
-      renderMemberTags(); 
-      document.getElementById("s-webhook").value = settings.webhookUrl; 
-      document.getElementById("totalCount").textContent = records.length + "件"; 
-    } 
+function showApp() {
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app-screen").style.display = "";
+  if (currentUser && currentUser.picture) {
+    var img = document.getElementById("user-avatar");
+    img.src = currentUser.picture;
+    img.style.display = "";
+  }
+  document.getElementById("user-name").textContent = currentUser ? (currentUser.name || currentUser.email.split("@")[0]) : "";
+  init();
+}
 
-    // ══════════════════════════════════════════════════════ 
-    //  TAB 
-    // ══════════════════════════════════════════════════════ 
-    const SETTINGS_PASSWORD = "just0501"; 
-    let settingsUnlocked = false; 
-    function switchTab(tab) {if (tab === "settings" && !settingsUnlocked) {const pw = prompt("設定画面のパスワードを入力してください"); if (pw !== SETTINGS_PASSWORD) {alert("パスワードが違います"); return; } settingsUnlocked = true; } ["form","list","settings"].forEach(t => {document.getElementById("tab-" + t).style.display = t === tab ? "" : "none"; }); document.querySelectorAll(".tab-btn").forEach((b, i) => {b.classList.toggle("active", ["form","list","settings"][i] === tab); }); if (tab === "list") renderList(); } 
+window.addEventListener("load", function() {
+  if (!checkSession()) {
+    document.getElementById("login-screen").style.display = "flex";
+  }
+});
 
-    // ══════════════════════════════════════════════════════ 
-    //  AVATAR 
-    // ══════════════════════════════════════════════════════ 
-    function getAvatarBg(name) {let sum = 0; for (let i=0; i<name.length; i++) sum += name.charCodeAt(i); return AVATAR_COLORS[sum % AVATAR_COLORS.length]; } function createAvatarHtml(name) {const initial = name ? name.substring(0,1) : "?"; const bg = getAvatarBg(name || ""); return `<span class="avatar" style="background:${bg}">${initial}</span>`; } 
+// ══════════════════════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════════════════════
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzXSc5Q35apoyjY2YC2bV-ys23ZdSnaCyaF2u9qLKWeWnD7CF4GkvtLeLyriBmE0TF_/exec";
 
-    // ══════════════════════════════════════════════════════ 
-    //  BUILD COMPONENT 
-    // ══════════════════════════════════════════════════════ 
-    function buildOfficeSelect() {const el = document.getElementById("f-office"); OFFICES.forEach(o => {const opt = document.createElement("option"); opt.value = o; opt.textContent = o; el.appendChild(opt); }); } function buildApproverOptions() {const el = document.getElementById("approver-options"); el.innerHTML = ""; DEFAULT_APPROVERS.forEach(name => {const label = document.createElement("label"); label.className = "approver-option checked"; label.innerHTML = ` <input type="checkbox" checked value="${name}" onchange="toggleApprover(this, '${name}')"> <span class="name">${name}</span> `; el.appendChild(label); }); } function toggleApprover(cb, name) {cb.parentElement.classList.toggle("checked", cb.checked); if (cb.checked) {if (!formState.approvers.includes(name)) formState.approvers.push(name); } else {formState.approvers = formState.approvers.filter(x => x !== name); } } function buildMultiCheck(containerId, array, stateKey) {const el = document.getElementById(containerId); el.innerHTML = ""; array.forEach(item => {const btn = document.createElement("button"); btn.className = "chip-toggle"; btn.textContent = item; btn.type = "button"; btn.onclick = () => {btn.classList.toggle("on"); if (btn.classList.contains("on")) {formState[stateKey].push(item); } else {formState[stateKey] = formState[stateKey].filter(x => x !== item); } }; el.appendChild(btn); }); } 
+// ══════════════════════════════════════════════════════
+//  MASTER DATA
+// ══════════════════════════════════════════════════════
+const OFFICES = [
+  "川崎オフィス","札幌オフィス","札幌大通オフィス","仙台オフィス","新宿オフィス",
+  "池袋オフィス","横浜オフィス","梅田オフィス","天神オフィス","博多オフィス",
+  "熊本オフィス","沖縄オフィス","チア仙台","チア城東","チア城西","チア長野",
+  "チア梅田","チア福岡","チア熊本","BPO","AG"
+];
+const CORRECTION_TYPES = [
+  "紹介料の修正","イレギュラー費入力漏れ","勤務時間相違","時給相違","交通費漏れ",
+  "丸め時間相違","少数点による端数調整","請求先№紐づけ相違","前月調整金漏れ",
+  "宛名相違","締日・支払サイト相違"
+];
+const CAUSES = ["当社起因","先方起因"];
+const DEFAULT_APPROVERS = ["小倉菜愛","宮川直人"];
+const AVATAR_COLORS = ["#6366F1","#8B5CF6","#EC4899","#0EA5E9","#10B981","#F59E0B"];
+const STATUS_META = {
+  "申請中":  { bg:"#EFF6FF", text:"#2563EB", border:"#BFDBFE", dot:"#3B82F6" },
+  "差戻し":  { bg:"#FEF3C7", text:"#D97706", border:"#FDE68A", dot:"#F59E0B" },
+  "承認済み":{ bg:"#ECFDF5", text:"#059669", border:"#A7F3D0", dot:"#10B981" },
+};
 
-    // ══════════════════════════════════════════════════════ 
-    //  PERSON SELECTOR 
-    // ══════════════════════════════════════════════════════ 
-    function setupPersonSelector(prefix, isSingle) {const input = document.getElementById(`ps-${prefix}-input`); const dropdown = document.getElementById(`ps-${prefix}-dropdown`); input.addEventListener("focus", () => showDropdown(prefix)); input.addEventListener("input", () => showDropdown(prefix)); document.addEventListener("click", (e) => {if (!e.target.closest(`#ps-${prefix}`)) {dropdown.classList.remove("open"); } }); } function showDropdown(prefix) {const input = document.getElementById(`ps-${prefix}-input`); const dropdown = document.getElementById(`ps-${prefix}-dropdown`); const val = input.value.trim().toLowerCase(); dropdown.innerHTML = ""; let filtered = members; if (val) {filtered = members.filter(m => m.toLowerCase().includes(val)); } if (filtered.length === 0) {dropdown.innerHTML = `<div class="person-empty">見つかりません</div>`; } else {filtered.forEach(name => {const div = document.createElement("div"); div.className = "person-option"; div.innerHTML = `${createAvatarHtml(name)} <span>${name}</span>`; div.onclick = () => selectPerson(prefix, name); dropdown.appendChild(div); }); } dropdown.classList.add("open"); } function selectPerson(prefix, name) {const isSingle = (prefix === "applicant"); if (isSingle) {formState[prefix] = name; } else {if (!formState[prefix].includes(name)) formState[prefix].push(name); } document.getElementById(`ps-${prefix}-input`).value = ""; document.getElementById(`ps-${prefix}-dropdown`).classList.remove("open"); renderPersonTags(prefix); } function removePerson(prefix, name) {const isSingle = (prefix === "applicant"); if (isSingle) {formState[prefix] = ""; } else {formState[prefix] = formState[prefix].filter(x => x !== name); } renderPersonTags(prefix); } function renderPersonTags(prefix) {const tagsDiv = document.getElementById(`ps-${prefix}-tags`); tagsDiv.innerHTML = ""; const val = formState[prefix]; if (!val) return; if (typeof val === "string") {tagsDiv.innerHTML = `<span class="user-tag">${createAvatarHtml(val)} <span>${val}</span><button onclick="removePerson('${prefix}','${val}')">×</button></span>`; } else {val.forEach(name => {const span = document.createElement("span"); span.className = "user-tag"; span.innerHTML = `${createAvatarHtml(name)} <span>${name}</span><button onclick="removePerson('${prefix}','${name}')">×</button>`; tagsDiv.appendChild(span); }); } } 
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+var records  = [];
+var members  = [];
+var settings = { webhookUrl:"" };
+var currentFilter = "すべて";
+var formState = { approvers: DEFAULT_APPROVERS.slice(), correctionTypes:[], causes:[], applicant:"", viewers:[] };
+var currentDetail = null;
+var statusEditChoice = "";
 
-    // ══════════════════════════════════════════════════════ 
-    //  SUBMIT FORM 
-    // ══════════════════════════════════════════════════════ 
-    async function submitForm() {const errEl = document.getElementById("form-error"); errEl.style.display = "none"; const billingNo  = document.getElementById("f-billingNo").value.trim(); const office     = document.getElementById("f-office").value; const causeDetail= document.getElementById("f-causeDetail").value.trim(); const futureAction= document.getElementById("f-futureAction").value.trim(); const comment     = document.getElementById("f-comment").value.trim(); if (!formState.approvers.length || !billingNo || !office || !formState.applicant || !formState.correctionTypes.length || !formState.causes.length || !causeDetail || !futureAction || !formState.viewers.length) {errEl.textContent = "⚠ 必須項目（*）をすべて入力・選択してください。"; errEl.style.display = ""; return; } const btn = document.getElementById("submit-btn"); btn.disabled = true; btn.textContent = "⌛ 送信中..."; try {const res = await gasCall("addRecord", { record: { approvers: formState.approvers.join(","), billingNo, office, applicant: formState.applicant, correctionTypes: formState.correctionTypes.join(","), causes: formState.causes.join(","), causeDetail, futureAction, viewers: formState.viewers.join(","), comment } }); if (res.status === "success") {document.getElementById("form-view").style.display = "none"; document.getElementById("success-view").style.display = ""; document.getElementById("success-msg").textContent = `管理番号「${res.recordNo}」で申請を受け付けました。`; // Reload list data in background gasCall("getRecords").then(r => { records = r.records || []; document.getElementById("totalCount").textContent = records.length + "件"; }); } else {alert("エラー: " + res.message); } } catch (e) {alert("システムエラーが発生しました。"); console.error(e); } finally {btn.disabled = false; btn.textContent = "📨 申請する"; } } function resetForm() {document.getElementById("f-billingNo").value = ""; document.getElementById("f-office").value = ""; document.getElementById("f-causeDetail").value = ""; document.getElementById("f-futureAction").value = ""; document.getElementById("f-comment").value = ""; formState.correctionTypes = []; formState.causes = []; formState.applicant = ""; formState.viewers = []; formState.approvers = [...DEFAULT_APPROVERS]; buildApproverOptions(); buildMultiCheck("mc-correction", CORRECTION_TYPES, "correctionTypes"); buildMultiCheck("mc-causes", CAUSES, "causes"); renderPersonTags("applicant"); renderPersonTags("viewers"); document.getElementById("success-view").style.display = "none"; document.getElementById("form-view").style.display = ""; } 
+// ══════════════════════════════════════════════════════
+//  GAS API
+// ══════════════════════════════════════════════════════
+async function gasCall(action, body) {
+  body = body || {};
+  var res = await fetch(GAS_URL + "?action=" + action, {
+    method: "POST",
+    body: JSON.stringify(Object.assign({ action: action }, body)),
+  });
+  return res.json();
+}
 
-    // ══════════════════════════════════════════════════════ 
-    //  LIST RENDER 
-    // ══════════════════════════════════════════════════════ 
-    function setFilter(f) {currentFilter = f; document.querySelectorAll(".filter-btn").forEach(b => {b.classList.toggle("active", b.id === ("fb-" + (f==="すべて"?"all":f==="申請中"?"pending":f==="差戻し"?"remand":"approved"))); }); renderList(); } function renderList() {const listEl = document.getElementById("record-list"); listEl.innerHTML = ""; let cntP=0, cntR=0, cntA=0; records.forEach(r => {if (r.status === "申請中") cntP++; if (r.status === "差戻し") cntR++; if (r.status === "承認済み") cntA++; }); document.getElementById("cnt-pending").textContent = cntP; document.getElementById("cnt-remand").textContent = cntR; document.getElementById("cnt-approved").textContent = cntA; let filtered = records; if (currentFilter !== "すべて") {filtered = records.filter(r => r.status === currentFilter); } if (filtered.length === 0) {listEl.innerHTML = `<div class="empty-state">該当するデータはありません</div>`; return; } filtered.forEach(r => {const card = document.createElement("div"); card.className = `record-card ${r.status==='差戻し'?'remand':''}`; card.onclick = () => openModal(r); const meta = STATUS_META[r.status] || {bg:"#F3F4F6",text:"#374151",border:"#E5E7EB",dot:"#9CA3AF"}; let chipsHtml = ""; if (r.correctionTypes) {r.correctionTypes.split(",").forEach(c => { chipsHtml += `<span class="chip-gray">${c}</span> `; }); } card.innerHTML = ` <div class="record-header"> <span class="record-no">${r.recordNo} <span class="record-office">${r.office}</span></span> <span class="status-badge" style="background:${meta.bg};color:${meta.text};border-color:${meta.border}"> <span class="status-dot" style="background:${meta.dot}"></span>${r.status} </span> </div> <div class="record-meta"> <span>申請: ${r.applicant}</span> <span class="date">${formatDate(r.timestamp)}</span> </div> <div class="chips-row">${chipsHtml}</div> ${r.remandNote ? `<div class="remand-note"><strong>↩ 差戻し理由:</strong> ${r.remandNote}</div>` : ""} `; listEl.appendChild(card); }); } function formatDate(isoStr) {if (!isoStr) return ""; try {const d = new Date(isoStr); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch(e) {return isoStr;} } 
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+async function init() {
+  buildOfficeSelect();
+  buildApproverOptions();
+  buildMultiCheck("mc-correction", CORRECTION_TYPES, "correctionTypes");
+  buildMultiCheck("mc-causes", CAUSES, "causes");
+  setupPersonSelector("applicant", true);
+  setupPersonSelector("viewers", false);
+  var results = await Promise.all([gasCall("getRecords"), gasCall("getMembers"), gasCall("getSettings")]);
+  records  = results[0].records  || [];
+  members  = results[1].members  || [];
+  settings.webhookUrl = (results[2].settings && results[2].settings.webhookUrl) || "";
+  renderList();
+  renderMemberTags();
+  document.getElementById("s-webhook").value = settings.webhookUrl;
+  document.getElementById("totalCount").textContent = records.length + "件";
+}
 
-    // ══════════════════════════════════════════════════════ 
-    //  DETAIL MODAL 
-    // ══════════════════════════════════════════════════════ 
-    function openModal(record) {currentDetail = record; statusEditChoice = record.status; document.getElementById("modal-title").textContent = record.recordNo; const badgeMeta = STATUS_META[record.status] || {bg:"#F3F4F6",text:"#374151",border:"#E5E7EB",dot:"#9CA3AF"}; document.getElementById("modal-status").innerHTML = ` <span class="status-badge" style="background:${badgeMeta.bg};color:${badgeMeta.text};border-color:${badgeMeta.border}"> <span class="status-dot" style="background:${badgeMeta.dot}"></span>${record.status} </span> `; let historyHtml = ""; if (record.history && record.history.length) {record.history.forEach(h => {historyHtml += ` <div class="history-item"> <div class="history-dot"></div> <div> <div class="history-text"><strong>${h.status}</strong> by ${h.operator}<span class="history-meta">${formatDate(h.timestamp)}</span></div> ${h.comment ? `<div class="history-comment">${h.comment}</div>` : ""} </div> </div> `; }); } const bodyEl = document.getElementById("modal-body"); bodyEl.innerHTML = ` <div class="detail-row"><div class="detail-label">所属オフィス</div><div class="detail-value">${record.office}</div></div> <div class="detail-row"><div class="detail-label">該当請求先No</div><div class="detail-value">${record.billingNo}</div></div> <div class="detail-row"><div class="detail-label">申請者</div><div class="detail-value">${record.applicant}</div></div> <div class="detail-row"><div class="detail-label">承認者</div><div class="detail-value">${record.approvers || ""}</div></div> <div class="detail-row"><div class="detail-label">閲覧者</div><div class="detail-value">${record.viewers || ""}</div></div> <div class="detail-row"><div class="detail-label">修正内容</div><div class="detail-value">${record.correctionTypes || ""}</div></div> <div class="detail-row"><div class="detail-label">発生要因</div><div class="detail-value">${record.causes || ""}</div></div> <div class="detail-row"><div class="detail-label">発生原因</div><div class="detail-value" style="white-space:pre-wrap">${record.causeDetail || ""}</div></div> <div class="detail-row"><div class="detail-label">今後の対策</div><div class="detail-value" style="white-space:pre-wrap">${record.futureAction || ""}</div></div> ${record.comment ? `<div class="detail-row"><div class="detail-label">コメント</div><div class="detail-value" style="white-space:pre-wrap">${record.comment}</div></div>` : ""} ${historyHtml ? `<div class="history-section"><h4 class="history-title">ステータス履歴</h4>${historyHtml}</div>` : ""} <div class="status-change"> <h4 class="status-change-title">⚙ ステータスを更新する</h4> <div class="status-btns"> <button class="status-choice ${record.status==='申請中'?'on':''}" onclick="chooseStatusChoice(this,'申請中')">申請中</button> <button class="status-choice ${record.status==='差戻し'?'on':''}" onclick="chooseStatusChoice(this,'差戻し')">差戻し</button> <button class="status-choice ${record.status==='承認済み'?'on':''}" onclick="chooseStatusChoice(this,'承認済み')">承認済み</button> </div> <div class="field" style="margin-top:10px"> <label id="status-comment-lbl">コメント / 差戻し理由</label> <textarea id="md-comment" rows="2" placeholder="更新時のメモや差戻し理由を入力..."></textarea> </div> <div class="field"> <label>対応者（あなたの名前） <span class="req">*</span></label> <input type="text" id="md-operator" placeholder="例: 山田太郎"> </div> <button class="update-btn" id="modal-update-btn" onclick="updateStatus()">ステータスを確定する</button> </div> `; document.getElementById("modal").style.display = "flex"; } function closeModal(e) {if (e.target.id === "modal") {document.getElementById("modal").style.display = "none"; } } function chooseStatusChoice(btn, status) {statusEditChoice = status; btn.parentElement.querySelectorAll(".status-choice").forEach(b => b.classList.remove("on")); btn.classList.add("on"); } async function updateStatus() {const operator = document.getElementById("md-operator").value.trim(); const comment = document.getElementById("md-comment").value.trim(); if (!operator) {alert("対応者名を入力してください。"); return;} const btn = document.getElementById("modal-update-btn"); btn.disabled = true; btn.textContent = "更新中..."; try {const res = await gasCall("updateStatus", { recordNo: currentDetail.recordNo, status: statusEditChoice, operator, comment }); if (res.status === "success") {document.getElementById("modal").style.display = "none"; // List re-render const r = await gasCall("getRecords"); records = r.records || []; renderList(); } else {alert("エラー: " + res.message);} } catch(e) {alert("更新に失敗しました。");} finally {btn.disabled = false; btn.textContent = "ステータスを確定する";} } 
+// ══════════════════════════════════════════════════════
+//  TAB
+// ══════════════════════════════════════════════════════
+var SETTINGS_PASSWORD = "just0501";
+var settingsUnlocked = false;
 
-    // ══════════════════════════════════════════════════════ 
-    //  SETTINGS TAB LOGIC 
-    // ══════════════════════════════════════════════════════ 
-    function renderMemberTags() {const div = document.getElementById("member-tags"); div.innerHTML = ""; members.forEach(m => {const span = document.createElement("span"); span.className = "member-tag"; span.innerHTML = `${createAvatarHtml(m)} <span>${m}</span><button onclick="removeMember('${m}')">×</button>`; div.appendChild(span); }); document.getElementById("member-count").textContent = `登録メンバー数: ${members.length}名`; } function addMember() {const input = document.getElementById("new-member-input"); const name = input.value.trim(); if (!name) return; if (members.includes(name)) {alert("既に登録されています"); return;} members.push(name); members.sort(); renderMemberTags(); input.value = ""; } function removeMember(name) {if(!confirm(`${name} を削除しますか？`)) return; members = members.filter(x => x !== name); renderMemberTags(); } async function saveSettings() {const url = document.getElementById("s-webhook").value.trim(); if (url && !url.startsWith("https://")) {alert("Webhook URLが不正です"); return;} if (!confirm("設定を保存して、Googleスプレッドシート(GAS)と同期しますか？")) return; const btn = document.querySelector(".save-btn"); btn.disabled = true; btn.textContent = "⌛ 保存中..."; try {const res = await gasCall("saveSettings", { webhookUrl: url, members }); if (res.status === "success") {alert("設定を保存しました。"); settings.webhookUrl = url;} else {alert("エラー: " + res.message);} } catch(e) {alert("通信エラーが発生しました。");} finally {btn.disabled = false; btn.textContent = "設定を保存する";} }
-  </script>
+function switchTab(tab) {
+  if (tab === "settings" && !settingsUnlocked) {
+    var pw = prompt("設定画面のパスワードを入力してください");
+    if (pw !== SETTINGS_PASSWORD) { alert("パスワードが違います"); return; }
+    settingsUnlocked = true;
+  }
+  ["form","list","settings"].forEach(function(t) {
+    document.getElementById("tab-" + t).style.display = t === tab ? "" : "none";
+  });
+  document.querySelectorAll(".tab-btn").forEach(function(b, i) {
+    b.classList.toggle("active", ["form","list","settings"][i] === tab);
+  });
+  if (tab === "list") renderList();
+}
+
+// ══════════════════════════════════════════════════════
+//  AVATAR / STATUS
+// ══════════════════════════════════════════════════════
+function avatarHtml(name, size) {
+  size = size || 24;
+  var bg = AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  return '<span class="avatar" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (size*0.45) + 'px;background:' + bg + '">' + name[0] + '</span>';
+}
+
+function statusBadgeHtml(status) {
+  var m = STATUS_META[status] || STATUS_META["申請中"];
+  return '<span class="status-badge" style="background:' + m.bg + ';color:' + m.text + ';border-color:' + m.border + '"><span class="status-dot" style="background:' + m.dot + '"></span>' + status + '</span>';
+}
+
+// ══════════════════════════════════════════════════════
+//  BUILD FORM
+// ══════════════════════════════════════════════════════
+function buildOfficeSelect() {
+  var sel = document.getElementById("f-office");
+  OFFICES.forEach(function(o) {
+    var opt = document.createElement("option");
+    opt.value = o; opt.textContent = o; sel.appendChild(opt);
+  });
+}
+
+function buildApproverOptions() {
+  var el = document.getElementById("approver-options");
+  el.innerHTML = DEFAULT_APPROVERS.map(function(name) {
+    var checked = formState.approvers.indexOf(name) >= 0;
+    return '<label class="approver-option ' + (checked ? 'checked' : '') + '" id="apo-' + name + '">' +
+      '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleApprover(\'' + name + '\')">' +
+      avatarHtml(name, 22) + '<span class="name">' + name + '</span></label>';
+  }).join("");
+}
+
+function toggleApprover(name) {
+  var idx = formState.approvers.indexOf(name);
+  if (idx >= 0) formState.approvers.splice(idx, 1);
+  else formState.approvers.push(name);
+  document.getElementById("apo-" + name).classList.toggle("checked", formState.approvers.indexOf(name) >= 0);
+}
+
+function buildMultiCheck(containerId, options, stateKey) {
+  document.getElementById(containerId).innerHTML = options.map(function(opt) {
+    return '<button class="chip-toggle" onclick="toggleChip(this,\'' + stateKey + '\',\'' + opt + '\')">' + opt + '</button>';
+  }).join("");
+}
+
+function toggleChip(btn, stateKey, val) {
+  var arr = formState[stateKey];
+  var idx = arr.indexOf(val);
+  if (idx >= 0) { arr.splice(idx, 1); btn.classList.remove("on"); }
+  else { arr.push(val); btn.classList.add("on"); }
+}
+
+// ══════════════════════════════════════════════════════
+//  PERSON SELECTOR
+// ══════════════════════════════════════════════════════
+function setupPersonSelector(key, single) {
+  var input    = document.getElementById("ps-" + key + "-input");
+  var dropdown = document.getElementById("ps-" + key + "-dropdown");
+  input.addEventListener("input",  function() { renderDropdown(key, single); });
+  input.addEventListener("focus",  function() { renderDropdown(key, single); });
+  document.addEventListener("mousedown", function(e) {
+    if (!document.getElementById("ps-" + key).contains(e.target)) dropdown.classList.remove("open");
+  });
+}
+
+function renderDropdown(key, single) {
+  var input    = document.getElementById("ps-" + key + "-input");
+  var dropdown = document.getElementById("ps-" + key + "-dropdown");
+  var query    = input.value;
+  var selected = key === "applicant" ? (formState.applicant ? [formState.applicant] : []) : formState.viewers;
+  var filtered = members.filter(function(n) { return n.indexOf(query) >= 0 && selected.indexOf(n) < 0; }).slice(0, 10);
+  if (filtered.length === 0) {
+    dropdown.innerHTML = '<div class="person-empty">' + (query ? "該当なし" : "名前を入力して検索") + '</div>';
+  } else {
+    dropdown.innerHTML = filtered.map(function(n) {
+      return '<div class="person-option" onmousedown="selectPerson(\'' + key + '\',' + single + ',\'' + n + '\')">' + avatarHtml(n,24) + ' ' + n + '</div>';
+    }).join("");
+  }
+  dropdown.classList.add("open");
+}
+
+function selectPerson(key, single, name) {
+  if (key === "applicant") formState.applicant = name;
+  else if (formState.viewers.indexOf(name) < 0) formState.viewers.push(name);
+  document.getElementById("ps-" + key + "-input").value = "";
+  document.getElementById("ps-" + key + "-dropdown").classList.remove("open");
+  renderPersonTags(key);
+}
+
+function removePerson(key, name) {
+  if (key === "applicant") formState.applicant = "";
+  else formState.viewers = formState.viewers.filter(function(n) { return n !== name; });
+  renderPersonTags(key);
+}
+
+function renderPersonTags(key) {
+  var el   = document.getElementById("ps-" + key + "-tags");
+  var list = key === "applicant" ? (formState.applicant ? [formState.applicant] : []) : formState.viewers;
+  el.innerHTML = list.map(function(n) {
+    return '<span class="user-tag">' + avatarHtml(n,20) + ' ' + n + ' <button onclick="removePerson(\'' + key + '\',\'' + n + '\')">×</button></span>';
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════
+//  SUBMIT
+// ══════════════════════════════════════════════════════
+async function submitForm() {
+  var billingNo    = document.getElementById("f-billingNo").value.trim();
+  var office       = document.getElementById("f-office").value;
+  var causeDetail  = document.getElementById("f-causeDetail").value.trim();
+  var futureAction = document.getElementById("f-futureAction").value.trim();
+  var comment      = document.getElementById("f-comment").value.trim();
+  var errEl        = document.getElementById("form-error");
+  if (!billingNo || !office || !formState.applicant || !formState.correctionTypes.length ||
+      !formState.causes.length || !formState.approvers.length || !causeDetail || !futureAction || !formState.viewers.length) {
+    errEl.textContent = "必須項目（*）をすべて入力してください";
+    errEl.style.display = ""; return;
+  }
+  errEl.style.display = "none";
+  var btn = document.getElementById("submit-btn");
+  btn.disabled = true; btn.textContent = "申請中...";
+  var record = {
+    id: Date.now().toString(), createdAt: new Date().toISOString(), status: "申請中",
+    billingNo: billingNo, office: office, applicantName: formState.applicant,
+    correctionTypes: formState.correctionTypes.slice(), causes: formState.causes.slice(),
+    causeDetail: causeDetail, futureAction: futureAction,
+    approvers: formState.approvers.slice(), viewers: formState.viewers.slice(), comment: comment,
+    history: [{ at: new Date().toISOString(), action:"申請", by: formState.applicant }],
+  };
+  await gasCall("addRecord", { record: record });
+  records.unshift(record);
+  document.getElementById("totalCount").textContent = records.length + "件";
+  if (settings.webhookUrl) await notifyGoogleChat(settings.webhookUrl, record);
+  btn.disabled = false; btn.textContent = "📨 申請する";
+  document.getElementById("success-msg").textContent = settings.webhookUrl ? "承認者に Google Chat で通知されました。" : "（Google Chat 未設定のため通知はスキップ）";
+  document.getElementById("form-view").style.display = "none";
+  document.getElementById("success-view").style.display = "";
+}
+
+function resetForm() {
+  formState = { approvers: DEFAULT_APPROVERS.slice(), correctionTypes:[], causes:[], applicant:"", viewers:[] };
+  document.getElementById("f-billingNo").value = "";
+  document.getElementById("f-office").value = "";
+  document.getElementById("f-causeDetail").value = "";
+  document.getElementById("f-futureAction").value = "";
+  document.getElementById("f-comment").value = "";
+  buildApproverOptions();
+  document.querySelectorAll(".chip-toggle").forEach(function(b) { b.classList.remove("on"); });
+  renderPersonTags("applicant"); renderPersonTags("viewers");
+  document.getElementById("form-view").style.display = "";
+  document.getElementById("success-view").style.display = "none";
+}
+
+// ══════════════════════════════════════════════════════
+//  GOOGLE CHAT
+// ══════════════════════════════════════════════════════
+async function notifyGoogleChat(webhookUrl, record) {
+  var lines = [
+    "📨 *新しい修正申請が届きました*",
+    "承認者: " + (record.approvers||[]).join("、"),
+    "━━━━━━━━━━━━━━",
+    "請求先No: " + record.billingNo,
+    "所属オフィス: " + record.office,
+    "申請者: " + record.applicantName,
+    "修正内容: " + record.correctionTypes.join("、"),
+    "発生要因: " + record.causes.join("、"),
+    record.causeDetail   ? "発生原因: "   + record.causeDetail   : null,
+    record.futureAction  ? "今後の対策: " + record.futureAction  : null,
+    record.comment       ? "コメント: "   + record.comment       : null,
+    "申請日時: " + new Date(record.createdAt).toLocaleString("ja-JP"),
+  ].filter(Boolean).join("\n");
+  try { await fetch(webhookUrl, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:lines}) }); } catch(e){}
+}
+
+// ══════════════════════════════════════════════════════
+//  LIST
+// ══════════════════════════════════════════════════════
+function setFilter(f) {
+  currentFilter = currentFilter === f ? "すべて" : f;
+  renderList();
+}
+
+function renderList() {
+  var cnt = { "申請中":0, "差戻し":0, "承認済み":0 };
+  records.forEach(function(r) { if (cnt[r.status] !== undefined) cnt[r.status]++; });
+  document.getElementById("cnt-pending").textContent  = cnt["申請中"];
+  document.getElementById("cnt-remand").textContent   = cnt["差戻し"];
+  document.getElementById("cnt-approved").textContent = cnt["承認済み"];
+  ["pending","remand","approved"].forEach(function(k) {
+    var lbl = {"pending":"申請中","remand":"差戻し","approved":"承認済み"}[k];
+    document.getElementById("sum-" + k).classList.toggle("active", currentFilter === lbl);
+  });
+  ["all","pending","remand","approved"].forEach(function(k) {
+    var lbl = {"all":"すべて","pending":"申請中","remand":"差戻し","approved":"承認済み"}[k];
+    document.getElementById("fb-" + k).classList.toggle("active", currentFilter === lbl);
+  });
+  var filtered = currentFilter === "すべて" ? records : records.filter(function(r) { return r.status === currentFilter; });
+  var el = document.getElementById("record-list");
+  if (filtered.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div style="font-size:36px;margin-bottom:8px">📋</div>申請がありません</div>'; return;
+  }
+  el.innerHTML = filtered.map(function(r) {
+    return '<div class="record-card ' + (r.status==="差戻し"?"remand":"") + '" onclick="openDetail(this.dataset.id)" data-id="' + r.id + '">' +
+      '<div class="record-header"><div><span class="record-no">請求先No: ' + r.billingNo + '</span><span class="record-office">' + r.office + '</span></div>' + statusBadgeHtml(r.status) + '</div>' +
+      '<div class="record-meta">' + avatarHtml(r.applicantName,20) + ' ' + r.applicantName + '<span class="date">· ' + new Date(r.createdAt).toLocaleDateString("ja-JP") + '</span></div>' +
+      '<div class="chips-row">' + (r.correctionTypes||[]).map(function(t){ return '<span class="chip-red">' + t + '</span>'; }).join("") + '</div>' +
+      (r.status==="差戻し" && r.comment ? '<div class="remand-note">↩ 差戻し理由: ' + r.comment + '</div>' : '') +
+      '</div>';
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════
+//  DETAIL MODAL
+// ══════════════════════════════════════════════════════
+function openDetail(id) {
+  currentDetail = null;
+  for (var i = 0; i < records.length; i++) { if (String(records[i].id) === String(id)) { currentDetail = records[i]; break; } }
+  if (!currentDetail) return;
+  statusEditChoice = currentDetail.status;
+  document.getElementById("modal-title").textContent = "請求先No: " + currentDetail.billingNo;
+  document.getElementById("modal-status").innerHTML = statusBadgeHtml(currentDetail.status);
+  var r = currentDetail;
+  var html = '<div class="detail-row"><span class="detail-label">所属オフィス</span><span class="detail-value">' + r.office + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">申請者</span><span class="detail-value" style="display:flex;align-items:center;gap:6px">' + avatarHtml(r.applicantName,22) + ' ' + r.applicantName + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">申請日時</span><span class="detail-value">' + new Date(r.createdAt).toLocaleString("ja-JP") + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">修正内容</span><span class="detail-value"><div class="chips-row">' + (r.correctionTypes||[]).map(function(t){ return '<span class="chip-red">'+t+'</span>'; }).join("") + '</div></span></div>' +
+    '<div class="detail-row"><span class="detail-label">発生要因</span><span class="detail-value"><div class="chips-row">' + (r.causes||[]).map(function(c){ return '<span class="chip-gray">'+c+'</span>'; }).join("") + '</div></span></div>' +
+    (r.causeDetail ? '<div class="detail-row"><span class="detail-label">発生原因</span><span class="detail-value">' + r.causeDetail + '</span></div>' : '') +
+    (r.futureAction ? '<div class="detail-row"><span class="detail-label">今後の対策</span><span class="detail-value">' + r.futureAction + '</span></div>' : '') +
+    '<div class="detail-row"><span class="detail-label">承認者</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:5px">' + (r.approvers||[]).map(function(n){ return '<span class="user-tag">'+avatarHtml(n,20)+' '+n+'</span>'; }).join("") + '</span></div>' +
+    ((r.viewers||[]).length ? '<div class="detail-row"><span class="detail-label">閲覧者</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:5px">' + r.viewers.map(function(n){ return '<span class="user-tag">'+avatarHtml(n,20)+' '+n+'</span>'; }).join("") + '</span></div>' : '') +
+    (r.comment ? '<div class="detail-row"><span class="detail-label">コメント</span><span class="detail-value">' + r.comment + '</span></div>' : '');
+  if ((r.history||[]).length) {
+    html += '<div class="history-section"><p class="history-title">対応履歴</p>';
+    r.history.forEach(function(h) {
+      html += '<div class="history-item"><span class="history-dot"></span><div class="history-text"><span style="font-weight:600">' + h.action + '</span><span class="history-meta">' + h.by + ' · ' + new Date(h.at).toLocaleString("ja-JP") + '</span>' + (h.comment ? '<div class="history-comment">💬 ' + h.comment + '</div>' : '') + '</div></div>';
+    });
+    html += '</div>';
+  }
+  if (r.status !== "承認済み") {
+    html += '<div class="status-change"><p class="status-change-title">ステータスを変更</p>' +
+      '<div class="status-btns">' +
+      '<button class="status-choice ' + (statusEditChoice==="承認済み"?"on":"") + '" id="sc-approved" onclick="chooseStatus(\'承認済み\')">承認済み</button>' +
+      '<button class="status-choice ' + (statusEditChoice==="差戻し"?"on":"") + '" id="sc-remand" onclick="chooseStatus(\'差戻し\')">差戻し</button>' +
+      '</div>' +
+      '<textarea id="modal-comment" rows="2" placeholder="' + (statusEditChoice==="差戻し"?"差戻し理由を入力してください（必須）":"コメント（任意）") + '" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #D1D5DB;font-size:14px;outline:none;background:#F9FAFB;resize:vertical;margin-bottom:10px" oninput="checkUpdateBtn()">' + (r.comment||"") + '</textarea>' +
+      '<p id="modal-comment-err" style="font-size:12px;color:#EF4444;margin:-6px 0 10px;display:none">差戻し時はコメントが必要です</p>' +
+      '<button class="update-btn" id="modal-update-btn" onclick="updateStatus()">更新する</button></div>';
+  }
+  document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal").style.display = "";
+}
+
+function chooseStatus(s) {
+  statusEditChoice = s;
+  document.getElementById("sc-approved").classList.toggle("on", s==="承認済み");
+  document.getElementById("sc-remand").classList.toggle("on", s==="差戻し");
+  document.getElementById("modal-comment").placeholder = s==="差戻し" ? "差戻し理由を入力してください（必須）" : "コメント（任意）";
+  checkUpdateBtn();
+}
+
+function checkUpdateBtn() {
+  var comment = (document.getElementById("modal-comment") && document.getElementById("modal-comment").value) || "";
+  var needComment = statusEditChoice==="差戻し" && !comment.trim();
+  var errEl = document.getElementById("modal-comment-err");
+  var btn   = document.getElementById("modal-update-btn");
+  if (errEl) errEl.style.display = needComment ? "" : "none";
+  if (btn)   btn.disabled = needComment;
+}
+
+async function updateStatus() {
+  var comment = document.getElementById("modal-comment").value.trim();
+  if (!currentDetail) return;
+  var updated = Object.assign({}, currentDetail, {
+    status: statusEditChoice, comment: comment,
+    history: (currentDetail.history||[]).concat([{ at: new Date().toISOString(), action: statusEditChoice, by:"承認者", comment: comment||undefined }]),
+  });
+  await gasCall("updateRecord", { record: updated });
+  for (var i = 0; i < records.length; i++) { if (records[i].id === updated.id) { records[i] = updated; break; } }
+  currentDetail = updated;
+  document.getElementById("modal").style.display = "none";
+  renderList();
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById("modal")) document.getElementById("modal").style.display = "none";
+}
+
+// ══════════════════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════════════════
+function renderMemberTags() {
+  var el = document.getElementById("member-tags");
+  el.innerHTML = members.map(function(name) {
+    return '<span class="member-tag">' + avatarHtml(name,20) + ' ' + name + ' <button onclick="removeMember(\'' + name + '\')">×</button></span>';
+  }).join("");
+  document.getElementById("member-count").textContent = "現在 " + members.length + " 名登録中";
+}
+
+function addMember() {
+  var input = document.getElementById("new-member-input");
+  var name = input.value.trim();
+  if (!name || members.indexOf(name) >= 0) return;
+  members.push(name);
+  members.sort(function(a,b) { return a.localeCompare(b,"ja"); });
+  input.value = ""; renderMemberTags();
+}
+
+function removeMember(name) {
+  members = members.filter(function(m) { return m !== name; });
+  renderMemberTags();
+}
+
+async function saveSettings() {
+  settings.webhookUrl = document.getElementById("s-webhook").value.trim();
+  var btn = document.querySelector(".save-btn");
+  await Promise.all([gasCall("saveSettings", { settings: settings }), gasCall("saveMembers", { members: members })]);
+  btn.textContent = "✅ 設定を保存しました";
+  setTimeout(function() { btn.textContent = "設定を保存する"; }, 2000);
+}
+</script>
 </body>
+</html>
