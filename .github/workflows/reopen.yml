@@ -1,0 +1,30 @@
+name: reopen-site
+on:
+  schedule:
+    # 2026-10-01 00:00 JST = 2026-09-30 15:00 UTC (遅延に備え予備実行あり)
+    - cron: '0 15 30 9 *'
+    - cron: '30 15 30 9 *'
+    - cron: '0 17 30 9 *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  reopen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore original site
+        run: |
+          set -e
+          if [ ! -f "_archive/index.html" ]; then
+            echo "Already reopened. Nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q index.html
+          git mv "_archive/index.html" "index.html"
+          git mv "_archive/index (2).html" "index (2).html" || true
+          git rm -q .github/workflows/reopen.yml
+          git commit -m "Reopen site as scheduled (2026-10-01)"
+          git push
