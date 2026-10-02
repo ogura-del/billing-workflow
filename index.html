@@ -456,13 +456,36 @@ var statusEditChoice = "";
 // ══════════════════════════════════════════════════════
 //  GAS API
 // ══════════════════════════════════════════════════════
-async function gasCall(action, body) {
+// GAS は混雑時に遅延・HTMLエラーページ・一時的な失敗を返すことがあるため、
+// タイムアウト付きで最大3回リトライし、JSON以外の応答はエラーとして扱う
+async function gasCall(action, body, opts) {
   body = body || {};
-  var res = await fetch(GAS_URL + "?action=" + action, {
-    method: "POST",
-    body: JSON.stringify(Object.assign({ action: action }, body)),
-  });
-  return res.json();
+  opts = opts || {};
+  var retries = opts.retries !== undefined ? opts.retries : 3;
+  var timeoutMs = opts.timeoutMs || 25000;
+  var lastErr;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs);
+    try {
+      var res = await fetch(GAS_URL + "?action=" + action, {
+        method: "POST",
+        body: JSON.stringify(Object.assign({ action: action }, body)),
+        signal: ctrl.signal,
+      });
+      var text = await res.text();
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      try { return JSON.parse(text); }
+      catch(e) { throw new Error("JSONではない応答: " + text.slice(0, 80)); }
+    } catch(e) {
+      lastErr = e;
+      console.warn("gasCall(" + action + ") failed (attempt " + (attempt+1) + "):", e);
+      if (attempt < retries) await new Promise(function(r) { setTimeout(r, 800 * Math.pow(2, attempt)); });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
 }
 
 // ══════════════════════════════════════════════════════
@@ -475,14 +498,40 @@ async function init() {
   buildMultiCheck("mc-causes", CAUSES, "causes");
   setupPersonSelector("applicant", true);
   setupPersonSelector("viewers", false);
-  var results = await Promise.all([gasCall("getRecords"), gasCall("getMembers"), gasCall("getSettings")]);
-  records  = (results[0].records || []).filter(function(r) { return r.status !== "削除済み"; });
-  members  = results[1].members  || [];
-  settings.webhookUrl = (results[2].settings && results[2].settings.webhookUrl) || "";
-  renderList();
-  renderMemberTags();
-  document.getElementById("s-webhook").value = settings.webhookUrl;
-  document.getElementById("totalCount").textContent = records.length + "件";
+  await loadData();
+}
+
+var dataLoaded = false;
+
+function showListMessage(html) {
+  document.getElementById("record-list").innerHTML = '<div class="empty-state">' + html + '</div>';
+}
+
+async function loadData() {
+  dataLoaded = false;
+  document.getElementById("totalCount").textContent = "読込中…";
+  showListMessage('<div style="font-size:36px;margin-bottom:8px">⏳</div>申請一覧を読み込んでいます…');
+  try {
+    // 申請一覧の取得が本体。メンバー・設定は失敗しても一覧表示を妨げない
+    var results = await Promise.allSettled([gasCall("getRecords"), gasCall("getMembers"), gasCall("getSettings")]);
+    if (results[0].status !== "fulfilled") throw results[0].reason;
+    records  = (results[0].value.records || []).filter(function(r) { return r.status !== "削除済み"; });
+    if (results[1].status === "fulfilled") members = results[1].value.members || [];
+    if (results[2].status === "fulfilled") settings.webhookUrl = (results[2].value.settings && results[2].value.settings.webhookUrl) || "";
+    dataLoaded = true;
+    renderList();
+    renderMemberTags();
+    document.getElementById("s-webhook").value = settings.webhookUrl;
+    document.getElementById("totalCount").textContent = records.length + "件";
+  } catch(e) {
+    console.error("loadData failed:", e);
+    document.getElementById("totalCount").textContent = "取得失敗";
+    showListMessage(
+      '<div style="font-size:36px;margin-bottom:8px">⚠️</div>申請一覧を取得できませんでした<br>' +
+      '<span style="font-size:12px;color:#999">' + String(e && e.message || e) + '</span><br>' +
+      '<button class="submit-btn" style="width:auto;padding:10px 28px;font-size:13px;margin-top:12px" onclick="loadData()">再読み込み</button>'
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -692,6 +741,7 @@ function setFilter(f) {
 }
 
 function renderList() {
+  if (!dataLoaded) return; // 読込中/失敗表示を上書きしない
   var cnt = { "申請中":0, "差戻し":0, "承認済み":0 };
   records.forEach(function(r) { if (cnt[r.status] !== undefined) cnt[r.status]++; });
   document.getElementById("cnt-pending").textContent  = cnt["申請中"];
