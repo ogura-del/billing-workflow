@@ -148,6 +148,14 @@
   .member-tag { display: inline-flex; align-items: center; gap: 5px; background: #F5F3FF; color: #4338CA; border: 1px solid #DDD6FE; border-radius: 20px; padding: 4px 10px 4px 8px; font-size: 13px; }
   .member-tag button { background: none; border: none; color: #C4B5FD; font-size: 14px; padding: 0; line-height: 1; margin-left: 3px; cursor: pointer; }
   .member-count { font-size: 12px; color: #9CA3AF; margin-top: 10px; }
+  .edit-banner { display: flex; gap: 16px; align-items: flex-start; background: #FEF3C7; border-bottom: 2px solid #F59E0B; padding: 16px 28px; }
+  .edit-banner-main { flex: 1; }
+  .edit-banner-title { font-size: 14px; font-weight: 800; color: #92400E; margin-bottom: 4px; }
+  .edit-banner-sub { font-size: 12px; color: #B45309; }
+  .edit-banner-reason { margin-top: 8px; font-size: 13px; color: #78350F; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 8px 12px; white-space: pre-wrap; }
+  .edit-cancel-btn { background: #fff; border: 1.5px solid #FCD34D; color: #92400E; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .edit-btn { width: 100%; margin-top: 14px; padding: 12px; background: #F59E0B; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; }
+  .edit-btn:hover { background: #D97706; }
 </style>
 </head>
 <body>
@@ -200,6 +208,14 @@
       <button class="submit-btn" style="width:auto;padding:11px 32px;font-size:14px" onclick="resetForm()">新しい申請をする</button>
     </div>
     <div id="form-view" class="card">
+      <div id="edit-banner" class="edit-banner" style="display:none">
+        <div class="edit-banner-main">
+          <div class="edit-banner-title">↩ 差戻しされた申請を修正しています</div>
+          <div class="edit-banner-sub" id="edit-banner-sub"></div>
+          <div class="edit-banner-reason" id="edit-banner-reason"></div>
+        </div>
+        <button class="edit-cancel-btn" onclick="cancelEdit()">編集をやめる</button>
+      </div>
       <div class="notice">
         <div class="notice-title">📋 運用ルール</div>
         <p class="notice-sub">請求書発行後に修正や取消が発生した際は下記申請を行います。</p>
@@ -678,26 +694,101 @@ async function submitForm() {
   }
   errEl.style.display = "none";
   var btn = document.getElementById("submit-btn");
-  btn.disabled = true; btn.textContent = "申請中...";
-  var record = {
-    id: Date.now().toString(), createdAt: new Date().toISOString(), status: "申請中",
+  var isEdit = !!editingRecord;
+  btn.disabled = true; btn.textContent = isEdit ? "再申請中..." : "申請中...";
+  var fields = {
     billingNo: billingNo, office: office, applicantName: formState.applicant,
     correctionTypes: formState.correctionTypes.slice(), causes: formState.causes.slice(),
     causeDetail: causeDetail, futureAction: futureAction,
     approvers: formState.approvers.slice(), viewers: formState.viewers.slice(), comment: comment,
-    history: [{ at: new Date().toISOString(), action:"申請", by: formState.applicant }],
   };
-  await gasCall("addRecord", { record: record });
-  records.unshift(record);
+  try {
+    if (isEdit) {
+      // 差戻し → 修正して再申請：同じIDのまま内容を更新し、ステータスを申請中に戻す
+      var updated = Object.assign({}, editingRecord, fields, {
+        status: "申請中",
+        updatedAt: new Date().toISOString(),
+        history: (editingRecord.history || []).concat([{ at: new Date().toISOString(), action: "再申請", by: formState.applicant, comment: comment || undefined }]),
+      });
+      await gasCall("updateRecord", { record: updated });
+      for (var i = 0; i < records.length; i++) { if (String(records[i].id) === String(updated.id)) { records[i] = updated; break; } }
+      if (settings.webhookUrl) await notifyGoogleChat(settings.webhookUrl, updated, "🔁 *差戻し申請が修正・再申請されました*");
+      editingRecord = null;
+    } else {
+      var record = Object.assign({
+        id: Date.now().toString(), createdAt: new Date().toISOString(), status: "申請中",
+        history: [{ at: new Date().toISOString(), action:"申請", by: formState.applicant }],
+      }, fields);
+      await gasCall("addRecord", { record: record });
+      records.unshift(record);
+      if (settings.webhookUrl) await notifyGoogleChat(settings.webhookUrl, record);
+    }
+  } catch(e) {
+    console.error("submitForm failed:", e);
+    errEl.textContent = (isEdit ? "再申請" : "申請") + "の送信に失敗しました。通信状況を確認してもう一度お試しください。（" + String(e && e.message || e) + "）";
+    errEl.style.display = "";
+    btn.disabled = false; btn.textContent = isEdit ? "🔁 再申請する" : "📨 申請する";
+    return;
+  }
   document.getElementById("totalCount").textContent = records.length + "件";
-  if (settings.webhookUrl) await notifyGoogleChat(settings.webhookUrl, record);
   btn.disabled = false; btn.textContent = "📨 申請する";
+  document.getElementById("edit-banner").style.display = "none";
+  document.querySelector("#success-view h2").textContent = isEdit ? "再申請が完了しました" : "申請が完了しました";
   document.getElementById("success-msg").textContent = settings.webhookUrl ? "承認者に Google Chat で通知されました。" : "（Google Chat 未設定のため通知はスキップ）";
   document.getElementById("form-view").style.display = "none";
   document.getElementById("success-view").style.display = "";
 }
 
+// ══════════════════════════════════════════════════════
+//  EDIT (差戻し → 修正して再申請)
+// ══════════════════════════════════════════════════════
+var editingRecord = null;
+
+function startEdit() {
+  if (!currentDetail) return;
+  var r = currentDetail;
+  editingRecord = r;
+  formState = {
+    approvers: (r.approvers || []).slice(),
+    correctionTypes: (r.correctionTypes || []).slice(),
+    causes: (r.causes || []).slice(),
+    applicant: r.applicantName || "",
+    viewers: (r.viewers || []).slice(),
+  };
+  document.getElementById("f-billingNo").value = r.billingNo || "";
+  document.getElementById("f-office").value = r.office || "";
+  document.getElementById("f-causeDetail").value = r.causeDetail || "";
+  document.getElementById("f-futureAction").value = r.futureAction || "";
+  document.getElementById("f-comment").value = ""; // 差戻し理由は上のバナーに表示し、ここには申請者の返信を書いてもらう
+  buildApproverOptions();
+  document.querySelectorAll("#mc-correction .chip-toggle").forEach(function(b) { b.classList.toggle("on", formState.correctionTypes.indexOf(b.textContent) >= 0); });
+  document.querySelectorAll("#mc-causes .chip-toggle").forEach(function(b) { b.classList.toggle("on", formState.causes.indexOf(b.textContent) >= 0); });
+  renderPersonTags("applicant"); renderPersonTags("viewers");
+  document.getElementById("edit-banner-sub").textContent = "請求先No: " + r.billingNo + " ／ " + r.office + " ／ 申請者: " + r.applicantName + "　— 内容を修正して「再申請する」を押してください";
+  var reasonEl = document.getElementById("edit-banner-reason");
+  reasonEl.textContent = r.comment ? "差戻し理由: " + r.comment : "";
+  reasonEl.style.display = r.comment ? "" : "none";
+  document.getElementById("edit-banner").style.display = "flex";
+  document.getElementById("f-comment").placeholder = "承認者への返信・補足があれば入力...";
+  document.getElementById("submit-btn").textContent = "🔁 再申請する";
+  document.getElementById("form-error").style.display = "none";
+  document.getElementById("form-view").style.display = "";
+  document.getElementById("success-view").style.display = "none";
+  document.getElementById("modal").style.display = "none";
+  switchTab("form");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function cancelEdit() {
+  resetForm();
+}
+
 function resetForm() {
+  editingRecord = null;
+  document.getElementById("edit-banner").style.display = "none";
+  document.getElementById("submit-btn").textContent = "📨 申請する";
+  document.getElementById("f-comment").placeholder = "補足コメントがあれば入力...";
+  document.querySelector("#success-view h2").textContent = "申請が完了しました";
   formState = { approvers: DEFAULT_APPROVERS.slice(), correctionTypes:[], causes:[], applicant:"", viewers:[] };
   document.getElementById("f-billingNo").value = "";
   document.getElementById("f-office").value = "";
@@ -714,9 +805,9 @@ function resetForm() {
 // ══════════════════════════════════════════════════════
 //  GOOGLE CHAT
 // ══════════════════════════════════════════════════════
-async function notifyGoogleChat(webhookUrl, record) {
+async function notifyGoogleChat(webhookUrl, record, title) {
   var lines = [
-    "📨 *新しい修正申請が届きました*",
+    title || "📨 *新しい修正申請が届きました*",
     "承認者: " + (record.approvers||[]).join("、"),
     "━━━━━━━━━━━━━━",
     "請求先No: " + record.billingNo,
@@ -807,6 +898,9 @@ function openDetail(id) {
       '<textarea id="modal-comment" rows="2" placeholder="' + (statusEditChoice==="差戻し"?"差戻し理由を入力してください（必須）":"コメント（任意）") + '" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #D1D5DB;font-size:14px;outline:none;background:#F9FAFB;resize:vertical;margin-bottom:10px" oninput="checkUpdateBtn()">' + (r.comment||"") + '</textarea>' +
       '<p id="modal-comment-err" style="font-size:12px;color:#EF4444;margin:-6px 0 10px;display:none">差戻し時はコメントが必要です</p>' +
       '<button class="update-btn" id="modal-update-btn" onclick="updateStatus()">更新する</button></div>';
+  }
+  if (r.status === "差戻し") {
+    html += '<button class="edit-btn" onclick="startEdit()">✏️ 内容を修正して再申請する</button>';
   }
   if (isApprover()) {
     html += '<div id="modal-delete-area"><button class="delete-btn" onclick="showDeleteConfirm()">🗑 この申請を削除する</button></div>';
